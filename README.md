@@ -2,7 +2,7 @@
 
 > A real-time security operations dashboard that runs in any browser, costs almost nothing to operate, and fits on a 50-inch screen.
 
-**Repository:** `[jeroenvdbroek.github.io/sentinel-soc-dashboard)` · [GitHub Pages blog]([https://YOUR_USERNAME.github.io/sentinel-soc-dashboard/](https://jeroenvdbroek.github.io/sentinel-soc-dashboard/))
+**Repository:** `[jeroenvdbroek.github.io/sentinel-soc-dashboard)` · [GitHub Pages blog]([https://jeroenvdbroek.github.io/sentinel-soc-dashboard/)
 
 ---
 
