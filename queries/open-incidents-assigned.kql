@@ -1,0 +1,15 @@
+// ── All open assigned incidents (analyst workload) ─────────────────────────
+// Returns every incident that is currently open and has an assigned owner.
+// No time filter — uses arg_max to get latest state of each incident.
+// Used by: logicapp-incidents.json → open-incidents.json blob
+SecurityIncident
+| summarize arg_max(TimeGenerated, *) by IncidentNumber
+| where Status != 'Closed'
+| where isnotempty(Owner.userPrincipalName)
+| where ModifiedBy <> 'Microsoft Defender XDR - alert correlation'
+| project IncidentNumber, Title, Severity, Status, CreatedTime, LastModifiedTime,
+  Owner=tostring(Owner.userPrincipalName),
+  OwnerEmail=tostring(Owner.email),
+  Tactics=tostring(AdditionalData.tactics),
+  AlertProductNames=tostring(AdditionalData.alertProductNames)
+| order by CreatedTime asc

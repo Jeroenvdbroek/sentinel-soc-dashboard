@@ -1,0 +1,8 @@
+// ── Daily ingestion trend (last 7 days) ───────────────────────────────────
+// Powers the sparkline chart with color thresholds (green/yellow/orange/red).
+// Thresholds: <250GB green, 250+ yellow, 300+ orange, 350+ red
+// Used by: logicapp-metrics.json → metrics.json blob
+Usage
+| where TimeGenerated > ago(7d)
+| summarize DailyGB = round(sum(Quantity)/1024, 2) by Day=bin(TimeGenerated, 1d)
+| sort by Day asc

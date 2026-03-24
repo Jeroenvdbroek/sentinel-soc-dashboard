@@ -1,0 +1,11 @@
+// ── Open incidents age distribution (Medium/High/Critical only) ────────────
+// Used for the age distribution chart on the TV dashboard.
+// Excludes Low and Informational to focus on actionable incidents.
+// Used by: logicapp-incidents.json → age-distribution.json blob
+SecurityIncident
+| summarize arg_max(LastModifiedTime, *) by IncidentNumber
+| where Status != 'Closed'
+| where Severity !in ('Informational', 'Low')
+| project IncidentNumber, Title, Severity, Status, CreatedTime, LastModifiedTime,
+  Owner=tostring(Owner.userPrincipalName)
+| order by LastModifiedTime desc

@@ -1,0 +1,14 @@
+// ── Incidents created in last 24h ──────────────────────────────────────────
+// Fetches all incidents created today with their latest state.
+// Used by: logicapp-incidents.json → incidents.json blob
+SecurityIncident
+| where TimeGenerated > ago(24h)
+| where CreatedTime > ago(24h)
+| where ModifiedBy <> 'Microsoft Defender XDR - alert correlation'
+| summarize arg_max(TimeGenerated, *) by IncidentNumber
+| project IncidentNumber, Title, Severity, Status, CreatedTime, ClosedTime, LastModifiedTime,
+  Owner=tostring(Owner.userPrincipalName),
+  Classification, ClassificationReason,
+  Tactics=tostring(AdditionalData.tactics),
+  AlertProductNames=tostring(AdditionalData.alertProductNames)
+| order by CreatedTime desc

@@ -1,0 +1,11 @@
+# Secrets / config
+*.env
+config.local.js
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+*.swp

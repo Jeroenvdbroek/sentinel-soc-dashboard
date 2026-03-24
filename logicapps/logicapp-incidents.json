@@ -1,0 +1,158 @@
+{
+  "definition": {
+    "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+    "contentVersion": "1.0.0.0",
+    "triggers": {
+      "Every_5_minutes": {
+        "type": "Recurrence",
+        "recurrence": {
+          "frequency": "Minute",
+          "interval": 5
+        },
+        "evaluatedRecurrence": {
+          "frequency": "Minute",
+          "interval": 5
+        }
+      }
+    },
+    "actions": {
+      "Query_Incidents": {
+        "type": "Http",
+        "inputs": {
+          "method": "POST",
+          "uri": "https://api.loganalytics.io/v1/workspaces/YOUR_WORKSPACE_ID/query",
+          "headers": {
+            "Content-Type": "application/json",
+            "x-ms-version": "2020-04-08"
+          },
+          "body": {
+            "query": "SecurityIncident\n| where TimeGenerated > ago(24h)\n| where CreatedTime > ago(24h)\n|  where ModifiedBy <> 'Microsoft Defender XDR - alert correlation'\n| summarize arg_max(TimeGenerated, *) by IncidentNumber\n| project IncidentNumber, Title, Severity, Status, CreatedTime, ClosedTime, LastModifiedTime,\n  Owner=tostring(Owner.userPrincipalName),\n  Classification, ClassificationReason,\n  Tactics=tostring(AdditionalData.tactics),\n  AlertProductNames=tostring(AdditionalData.alertProductNames)\n| order by CreatedTime desc"
+          },
+          "authentication": {
+            "type": "ManagedServiceIdentity",
+            "audience": "https://api.loganalytics.io"
+          }
+        }
+      },
+      "Write_incidents": {
+        "runAfter": {
+          "Query_Incidents": [
+            "Succeeded",
+            "Failed"
+          ]
+        },
+        "type": "Http",
+        "inputs": {
+          "method": "PUT",
+          "uri": "https://YOUR_STORAGE_ACCOUNT.blob.core.windows.net/YOUR_CONTAINER_NAME/incidents.json",
+          "headers": {
+            "x-ms-blob-type": "BlockBlob",
+            "Content-Type": "application/json",
+            "x-ms-version": "2020-04-08"
+          },
+          "body": "@body('Query_Incidents')",
+          "authentication": {
+            "type": "ManagedServiceIdentity",
+            "audience": "https://storage.azure.com/"
+          }
+        }
+      },
+      "Query_Open_Incidents": {
+        "runAfter": {
+          "Query_Incidents": [
+            "Succeeded",
+            "Failed"
+          ]
+        },
+        "type": "Http",
+        "inputs": {
+          "method": "POST",
+          "uri": "https://api.loganalytics.io/v1/workspaces/YOUR_WORKSPACE_ID/query",
+          "headers": {
+            "Content-Type": "application/json",
+            "x-ms-version": "2020-04-08"
+          },
+          "body": {
+            "query": "SecurityIncident\n| summarize arg_max(TimeGenerated, *) by IncidentNumber\n| where Status != 'Closed'\n| where ModifiedBy <> 'Microsoft Defender XDR - alert correlation'\n| project IncidentNumber, Title, Severity, Status, CreatedTime, LastModifiedTime,\n  Owner=tostring(Owner.userPrincipalName),\n  OwnerEmail=tostring(Owner.email),\n  Tactics=tostring(AdditionalData.tactics),\n  AlertProductNames=tostring(AdditionalData.alertProductNames)\n| order by CreatedTime asc"
+          },
+          "authentication": {
+            "type": "ManagedServiceIdentity",
+            "audience": "https://api.loganalytics.io"
+          }
+        }
+      },
+      "Write_open_incidents": {
+        "runAfter": {
+          "Query_Open_Incidents": [
+            "Succeeded",
+            "Failed"
+          ]
+        },
+        "type": "Http",
+        "inputs": {
+          "method": "PUT",
+          "uri": "https://YOUR_STORAGE_ACCOUNT.blob.core.windows.net/YOUR_CONTAINER_NAME/open-incidents.json",
+          "headers": {
+            "x-ms-blob-type": "BlockBlob",
+            "Content-Type": "application/json",
+            "x-ms-version": "2020-04-08"
+          },
+          "body": "@body('Query_Open_Incidents')",
+          "authentication": {
+            "type": "ManagedServiceIdentity",
+            "audience": "https://storage.azure.com/"
+          }
+        }
+      },
+      "Query_Age_Distribution": {
+        "runAfter": {
+          "Write_open_incidents": [
+            "Succeeded",
+            "Failed"
+          ]
+        },
+        "type": "Http",
+        "inputs": {
+          "method": "POST",
+          "uri": "https://api.loganalytics.io/v1/workspaces/YOUR_WORKSPACE_ID/query",
+          "headers": {
+            "Content-Type": "application/json",
+            "x-ms-version": "2020-04-08"
+          },
+          "body": {
+            "query": "SecurityIncident\n| summarize arg_max(LastModifiedTime, *) by IncidentNumber\n| where Status != 'Closed'\n| where Severity !in ('Informational', 'Low')\n| project IncidentNumber, Title, Severity, Status, CreatedTime, LastModifiedTime,\n  Owner=tostring(Owner.userPrincipalName)\n| order by LastModifiedTime desc"
+          },
+          "authentication": {
+            "type": "ManagedServiceIdentity",
+            "audience": "https://api.loganalytics.io"
+          }
+        }
+      },
+      "Write_age_distribution": {
+        "runAfter": {
+          "Query_Age_Distribution": [
+            "Succeeded",
+            "Failed"
+          ]
+        },
+        "type": "Http",
+        "inputs": {
+          "method": "PUT",
+          "uri": "https://YOUR_STORAGE_ACCOUNT.blob.core.windows.net/YOUR_CONTAINER_NAME/age-distribution.json",
+          "headers": {
+            "x-ms-blob-type": "BlockBlob",
+            "Content-Type": "application/json",
+            "x-ms-version": "2020-04-08"
+          },
+          "body": "@body('Query_Age_Distribution')",
+          "authentication": {
+            "type": "ManagedServiceIdentity",
+            "audience": "https://storage.azure.com/"
+          }
+        }
+      }
+    },
+    "parameters": {}
+  },
+  "parameters": {}
+}

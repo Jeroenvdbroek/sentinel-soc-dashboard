@@ -1,0 +1,205 @@
+{
+  "definition": {
+    "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+    "contentVersion": "1.0.0.0",
+    "triggers": {
+      "Every_5_minutes": {
+        "recurrence": {
+          "frequency": "Minute",
+          "interval": 5
+        },
+        "evaluatedRecurrence": {
+          "frequency": "Minute",
+          "interval": 5
+        },
+        "type": "Recurrence"
+      }
+    },
+    "actions": {
+      "Query_Ingestion": {
+        "type": "Http",
+        "inputs": {
+          "method": "POST",
+          "uri": "https://api.loganalytics.io/v1/workspaces/YOUR_WORKSPACE_ID/query",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "query": "Usage | where TimeGenerated > ago(24h) | summarize TotalGB = round(sum(Quantity)/1024,3) by DataType | where TotalGB > 0 | sort by TotalGB desc | take 15"
+          },
+          "authentication": {
+            "type": "ManagedServiceIdentity",
+            "audience": "https://api.loganalytics.io"
+          }
+        }
+      },
+      "Query_Ingestion_Trend": {
+        "type": "Http",
+        "inputs": {
+          "method": "POST",
+          "uri": "https://api.loganalytics.io/v1/workspaces/YOUR_WORKSPACE_ID/query",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "query": "Usage | where TimeGenerated > ago(7d) | summarize DailyGB = round(sum(Quantity)/1024,2) by Day=bin(TimeGenerated,1d) | sort by Day asc"
+          },
+          "authentication": {
+            "type": "ManagedServiceIdentity",
+            "audience": "https://api.loganalytics.io"
+          }
+        },
+        "runAfter": {
+          "Query_Ingestion": [
+            "Succeeded",
+            "Failed"
+          ]
+        }
+      },
+      "Query_Heartbeat": {
+        "type": "Http",
+        "inputs": {
+          "method": "POST",
+          "uri": "https://api.loganalytics.io/v1/workspaces/YOUR_WORKSPACE_ID/query",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "query": "Heartbeat | summarize LastSeen=max(TimeGenerated), Count=count() by Computer, OSType, Category | extend Status=iff(LastSeen > ago(5m),'Online',iff(LastSeen > ago(1h),'Stale','Offline')) | sort by LastSeen desc | take 50"
+          },
+          "authentication": {
+            "type": "ManagedServiceIdentity",
+            "audience": "https://api.loganalytics.io"
+          }
+        },
+        "runAfter": {
+          "Query_Ingestion_Trend": [
+            "Succeeded",
+            "Failed"
+          ]
+        }
+      },
+      "Query_TopAlerts": {
+        "type": "Http",
+        "inputs": {
+          "method": "POST",
+          "uri": "https://api.loganalytics.io/v1/workspaces/YOUR_WORKSPACE_ID/query",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "query": "SecurityAlert | where TimeGenerated > ago(24h) | summarize LastFired=max(TimeGenerated), Firings=count() by AlertName, ProductName, Severity=AlertSeverity | sort by LastFired desc | take 15"
+          },
+          "authentication": {
+            "type": "ManagedServiceIdentity",
+            "audience": "https://api.loganalytics.io"
+          }
+        },
+        "runAfter": {
+          "Query_Heartbeat": [
+            "Succeeded",
+            "Failed"
+          ]
+        }
+      },
+      "Query_SignIn": {
+        "type": "Http",
+        "inputs": {
+          "method": "POST",
+          "uri": "https://api.loganalytics.io/v1/workspaces/YOUR_WORKSPACE_ID/query",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "query": "SigninLogs | where TimeGenerated > ago(24h) | summarize Total=count(), Failed=countif(ResultType!=0), Risky=countif(RiskLevelDuringSignIn in ('high','medium')) | project Total, Failed, Risky, FailRate=round(todouble(Failed)/Total*100,1)"
+          },
+          "authentication": {
+            "type": "ManagedServiceIdentity",
+            "audience": "https://api.loganalytics.io"
+          }
+        },
+        "runAfter": {
+          "Query_TopAlerts": [
+            "Succeeded",
+            "Failed"
+          ]
+        }
+      },
+      "Query_AuditHighlights": {
+        "type": "Http",
+        "inputs": {
+          "method": "POST",
+          "uri": "https://api.loganalytics.io/v1/workspaces/YOUR_WORKSPACE_ID/query",
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "query": "AuditLogs | where TimeGenerated > ago(24h) | where OperationName in ('Add member to role','Delete user','Reset user password','Add application','Consent to application') | project TimeGenerated, OperationName, InitiatedBy=tostring(InitiatedBy.user.userPrincipalName), Target=tostring(TargetResources[0].displayName), Result | sort by TimeGenerated desc | take 20"
+          },
+          "authentication": {
+            "type": "ManagedServiceIdentity",
+            "audience": "https://api.loganalytics.io"
+          }
+        },
+        "runAfter": {
+          "Query_SignIn": [
+            "Succeeded",
+            "Failed"
+          ]
+        }
+      },
+      "Build_Metrics": {
+        "runAfter": {
+          "Query_AuditHighlights": [
+            "Succeeded",
+            "Failed"
+          ]
+        },
+        "type": "Compose",
+        "inputs": {
+          "lastUpdated": "@utcNow()",
+          "ingestionByTable": "@if(equals(outputs('Query_Ingestion')['statusCode'],200), body('Query_Ingestion')?['tables'], null)",
+          "ingestionTrend": "@if(equals(outputs('Query_Ingestion_Trend')['statusCode'],200), body('Query_Ingestion_Trend')?['tables'], null)",
+          "heartbeat": "@if(equals(outputs('Query_Heartbeat')['statusCode'],200), body('Query_Heartbeat')?['tables'], null)",
+          "topAlerts": "@if(equals(outputs('Query_TopAlerts')['statusCode'],200), body('Query_TopAlerts')?['tables'], null)",
+          "signinSummary": "@if(equals(outputs('Query_SignIn')['statusCode'],200), body('Query_SignIn')?['tables'], null)",
+          "auditHighlights": "@if(equals(outputs('Query_AuditHighlights')['statusCode'],200), body('Query_AuditHighlights')?['tables'], null)"
+        }
+      },
+      "Write_Metrics": {
+        "runAfter": {
+          "Build_Metrics": [
+            "Succeeded"
+          ]
+        },
+        "type": "Http",
+        "inputs": {
+          "method": "PUT",
+          "uri": "https://YOUR_STORAGE_ACCOUNT.blob.core.windows.net/YOUR_CONTAINER_NAME/metrics.json",
+          "headers": {
+            "x-ms-blob-type": "BlockBlob",
+            "Content-Type": "application/json",
+            "x-ms-version": "2020-04-08"
+          },
+          "body": "@outputs('Build_Metrics')",
+          "authentication": {
+            "type": "ManagedServiceIdentity",
+            "audience": "https://storage.azure.com/"
+          }
+        }
+      }
+    },
+    "parameters": {
+      "$connections": {
+        "type": "Object",
+        "defaultValue": {}
+      }
+    }
+  },
+  "parameters": {
+    "$connections": {
+      "type": "Object",
+      "value": {}
+    }
+  }
+}

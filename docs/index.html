@@ -1,0 +1,862 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Building a Live SOC Dashboard on Microsoft Sentinel — Without a Backend</title>
+<meta name="description" content="How we built a real-time SOC dashboard using Microsoft Sentinel, Azure Logic Apps, Blob Storage, and a single HTML file.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&display=swap" rel="stylesheet">
+<style>
+@font-face {
+  font-family: "Good Times";
+  font-weight: 400;
+  src: url("https://db.onlinewebfonts.com/t/58675f8b3e8d2b86212d965512aff412.woff2") format("woff2"),
+       url("https://db.onlinewebfonts.com/t/58675f8b3e8d2b86212d965512aff412.woff") format("woff");
+}
+@font-face {
+  font-family: "Good Times";
+  font-weight: 700;
+  src: url("https://db.onlinewebfonts.com/t/3750ae4f553135962d46a5e916204fe5.woff2") format("woff2"),
+       url("https://db.onlinewebfonts.com/t/3750ae4f553135962d46a5e916204fe5.woff") format("woff");
+}
+</style>
+<style>
+:root {
+  --bg:      #f6f3ee;
+  --paper:   #fdfbf8;
+  --ink:     #171614;
+  --ink2:    #2e2c29;
+  --muted:   #6b6560;
+  --border:  #e0dbd3;
+  --orange:  #d45c00;
+  --red:     #b8001f;
+  --blue:    #005ea6;
+  --green:   #1a6b3c;
+  --code-bg: #eee9e0;
+  --warn-bg: #fff7ee;
+  --note-bg: #eef4fb;
+  --serif:   'Good Times', 'Orbitron', Georgia, sans-serif;
+  --mono:    'JetBrains Mono', monospace;
+  --sans:    'DM Sans', system-ui, sans-serif;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:17px;line-height:1.8;-webkit-font-smoothing:antialiased;}
+
+/* ── TOP STRIPE ── */
+.stripe{background:var(--orange);height:4px;width:100%;}
+
+/* ── NAV ── */
+nav{
+  background:var(--paper);border-bottom:1px solid var(--border);
+  padding:0 clamp(20px,6vw,96px);height:58px;
+  display:flex;align-items:center;justify-content:space-between;
+  position:sticky;top:0;z-index:200;
+}
+.brand{font-family:var(--serif);font-size:13px;font-weight:700;color:var(--ink);letter-spacing:.5px;text-transform:uppercase;}
+.brand span{color:var(--orange);}
+.nav-r{display:flex;gap:24px;align-items:center;}
+.nav-r a{font-size:13px;color:var(--muted);text-decoration:none;transition:color .15s;}
+.nav-r a:hover{color:var(--ink);}
+.nav-gh{
+  font-family:var(--mono);font-size:10px;
+  background:var(--ink);color:#fff !important;
+  padding:6px 16px;letter-spacing:.5px;text-transform:uppercase;
+  transition:background .15s !important;
+}
+.nav-gh:hover{background:var(--orange) !important;}
+
+/* ── HERO ── */
+.hero{
+  background:var(--paper);
+  border-bottom:2px solid var(--border);
+  padding:clamp(56px,9vh,100px) clamp(20px,6vw,96px) clamp(48px,7vh,80px);
+}
+.hero-inner{max-width:820px;}
+.kicker{
+  font-family:var(--mono);font-size:10px;color:var(--orange);
+  letter-spacing:2.5px;text-transform:uppercase;
+  display:flex;align-items:center;gap:10px;margin-bottom:24px;
+}
+.kicker::before{content:'';display:block;width:24px;height:2px;background:var(--orange);}
+h1{
+  font-family:var(--serif);font-size:clamp(30px,5vw,58px);font-weight:700;
+  color:var(--ink);line-height:1.07;letter-spacing:-.5px;margin-bottom:26px;
+}
+h1 em{color:var(--orange);font-style:normal;}
+h1 s{color:#bbb;font-weight:300;text-decoration:line-through;}
+.lead{font-size:clamp(15px,1.8vw,18px);color:var(--muted);line-height:1.75;max-width:640px;margin-bottom:36px;}
+.meta{
+  display:flex;gap:0;flex-wrap:wrap;
+  border-top:1px solid var(--border);padding-top:22px;margin-top:8px;
+}
+.meta-item{
+  font-family:var(--mono);font-size:10px;color:var(--muted);
+  padding-right:24px;margin-right:24px;border-right:1px solid var(--border);
+  letter-spacing:.3px;line-height:1.6;
+}
+.meta-item:last-child{border-right:none;}
+.meta-item strong{display:block;color:var(--ink);font-weight:500;margin-bottom:2px;}
+.tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:20px;}
+.tag{
+  font-family:var(--mono);font-size:9px;color:var(--muted);
+  border:1px solid var(--border);padding:3px 10px;letter-spacing:.5px;text-transform:uppercase;
+}
+
+/* ── CONTENT ── */
+.content{
+  display:grid;
+  grid-template-columns:1fr min(680px,100%) 1fr;
+  padding-bottom:100px;
+}
+.content > *{grid-column:2;}
+
+/* ── SECTION LABELS ── */
+.sec{
+  display:flex;align-items:center;gap:14px;
+  margin:60px 0 20px;
+}
+.sec-num{
+  font-family:var(--mono);font-size:11px;font-weight:500;
+  color:var(--paper);background:var(--orange);
+  width:26px;height:26px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  flex-shrink:0;letter-spacing:0;
+}
+.sec-title{
+  font-family:var(--mono);font-size:10px;color:var(--orange);
+  letter-spacing:2px;text-transform:uppercase;
+}
+.sec::after{content:'';flex:1;height:1px;background:var(--border);}
+
+h2{
+  font-family:var(--serif);font-size:clamp(22px,3vw,32px);font-weight:700;
+  color:var(--ink);line-height:1.2;letter-spacing:-.3px;margin-bottom:18px;
+}
+h3{
+  font-family:var(--serif);font-size:19px;font-weight:600;font-style:italic;
+  color:var(--ink);margin:36px 0 12px;
+}
+p{color:var(--ink2);margin-bottom:18px;line-height:1.8;}
+p strong{color:var(--ink);font-weight:500;}
+a{color:var(--orange);}
+a:hover{color:var(--red);}
+
+/* ── CODE ── */
+pre{
+  background:var(--code-bg);
+  border-left:3px solid var(--orange);
+  padding:20px 24px;margin:24px 0;
+  overflow-x:auto;position:relative;
+  font-size:0; /* hide whitespace */
+}
+pre::before{
+  content:attr(data-lang);
+  display:block;
+  font-family:var(--mono);font-size:9px;color:var(--orange);
+  letter-spacing:2px;text-transform:uppercase;
+  margin-bottom:12px;font-size:9px;
+}
+code{font-family:var(--mono);font-size:12.5px;color:var(--ink);line-height:1.8;}
+p code,li code{
+  font-family:var(--mono);font-size:12px;
+  background:var(--code-bg);padding:1px 6px;color:var(--ink2);
+}
+.cm{color:#999;}          /* comment */
+.ck{color:#7c3f8a;}       /* keyword / operator */
+.cs{color:var(--green);}  /* string */
+.cf{color:var(--blue);}   /* function */
+
+/* ── CALLOUTS ── */
+.warn,.note,.tip{
+  padding:16px 20px 16px 20px;margin:24px 0;
+  font-size:15px;line-height:1.7;
+  border-left:3px solid;position:relative;
+}
+.warn{background:var(--warn-bg);border-color:var(--orange);}
+.note{background:var(--note-bg);border-color:var(--blue);}
+.tip{background:#f0f8f0;border-color:var(--green);}
+.warn strong{color:var(--orange);}
+.note strong{color:var(--blue);}
+.tip strong{color:var(--green);}
+.callout-label{
+  font-family:var(--mono);font-size:9px;letter-spacing:1.5px;
+  text-transform:uppercase;display:block;margin-bottom:6px;font-weight:500;
+}
+.warn .callout-label{color:var(--orange);}
+.note .callout-label{color:var(--blue);}
+.tip .callout-label{color:var(--green);}
+
+/* ── ARCH DIAGRAM ── */
+.arch{
+  background:var(--code-bg);
+  border:1px solid var(--border);
+  border-top:3px solid var(--ink);
+  padding:28px 32px;margin:28px 0;
+  font-family:var(--mono);font-size:12.5px;line-height:2.2;
+  position:relative;
+}
+.arch::before{
+  content:'ARCHITECTURE';
+  position:absolute;top:-1px;right:20px;
+  font-family:var(--mono);font-size:8px;letter-spacing:2px;
+  background:var(--ink);color:var(--paper);
+  padding:2px 8px;
+}
+.arch .an{color:var(--ink);font-weight:500;}
+.arch .aa{color:var(--orange);}
+.arch .ac{color:#999;}
+
+/* ── TABLE ── */
+.tbl-wrap{overflow-x:auto;margin:24px 0;}
+table{width:100%;border-collapse:collapse;font-size:14px;}
+thead{border-bottom:2px solid var(--ink);}
+th{text-align:left;padding:9px 14px;font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;font-weight:400;}
+tbody tr{border-bottom:1px solid var(--border);}
+tbody tr:hover{background:rgba(0,0,0,.02);}
+td{padding:9px 14px;color:var(--ink2);}
+td:first-child{font-family:var(--mono);font-size:11px;color:var(--orange);}
+td strong{color:var(--ink);}
+.green{color:var(--green)!important;}
+.amber{color:#b36800!important;}
+.orng{color:var(--orange)!important;}
+.red{color:var(--red)!important;}
+
+/* ── STEPS ── */
+.steps{list-style:none;margin:24px 0;padding:0;}
+.steps li{
+  display:flex;gap:18px;margin-bottom:22px;align-items:flex-start;
+  counter-increment:step;
+}
+.steps{counter-reset:step;}
+.steps li::before{
+  content:counter(step);
+  font-family:var(--mono);font-size:11px;font-weight:500;
+  border:2px solid var(--orange);color:var(--orange);
+  width:28px;height:28px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  flex-shrink:0;margin-top:2px;
+}
+.steps li div{color:var(--ink2);padding-top:3px;}
+.steps li strong{color:var(--ink);display:block;margin-bottom:3px;}
+
+/* ── COST ── */
+.cost{
+  background:var(--paper);border:1px solid var(--border);
+  border-left:4px solid var(--green);
+  padding:24px 28px;margin:28px 0;
+  display:flex;align-items:center;gap:24px;
+}
+.cost-num{font-family:var(--serif);font-size:56px;font-weight:700;color:var(--green);line-height:1;flex-shrink:0;}
+.cost-txt{font-size:14px;color:var(--muted);line-height:1.6;}
+.cost-txt strong{color:var(--ink);display:block;margin-bottom:4px;font-size:15px;}
+
+/* ── FILE TREE ── */
+.tree{
+  background:var(--code-bg);
+  border:1px solid var(--border);
+  padding:20px 24px;font-family:var(--mono);font-size:12px;line-height:2.1;margin:20px 0;
+}
+.tree .td{color:var(--orange);font-weight:500;}
+.tree .tf{color:var(--ink2);}
+.tree .tn{color:#999;}
+
+/* ── DIVIDER ── */
+hr{border:none;border-top:1px solid var(--border);margin:52px 0;}
+
+/* ── FOOTER ── */
+footer{
+  background:var(--ink);
+  padding:36px clamp(20px,6vw,96px);
+  display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px;
+}
+footer p{font-family:var(--mono);font-size:10px;color:#888;letter-spacing:.5px;}
+.footer-gh{
+  font-family:var(--mono);font-size:10px;color:#fff;
+  border:1px solid #444;padding:6px 18px;text-decoration:none;
+  letter-spacing:.5px;text-transform:uppercase;transition:border-color .15s,color .15s;
+}
+.footer-gh:hover{border-color:var(--orange);color:var(--orange);}
+
+/* ── SCROLL REVEAL ── */
+.reveal{opacity:0;transform:translateY(10px);transition:opacity .45s ease,transform .45s ease;}
+.reveal.in{opacity:1;transform:translateY(0);}
+
+/* ── RESPONSIVE ── */
+@media(max-width:700px){
+  .meta-item{border-right:none;padding-right:0;margin-right:0;margin-bottom:12px;}
+  .cost{flex-direction:column;gap:12px;}
+  .nav-r a:not(.nav-gh){display:none;}
+}
+</style>
+</head>
+<body>
+
+<div class="stripe"></div>
+
+<nav>
+  <div class="brand">SOC <span>·</span> Sentinel Dashboard</div>
+  <div class="nav-r">
+    <a href="#architecture">Architecture</a>
+    <a href="#kql">KQL</a>
+    <a href="#deploy">Deploy</a>
+    <a href="https://github.com/umcg-cybersecurity/soc-dashboard" target="_blank" class="nav-gh">GitHub ↗</a>
+  </div>
+</nav>
+
+<div class="hero">
+  <div class="hero-inner">
+    <div class="kicker">Microsoft Sentinel · Azure Logic Apps · KQL · Blob Storage</div>
+    <h1>A live SOC dashboard<br><em>without</em> a <s>backend server</s></h1>
+    <p class="lead">
+      How we built a real-time security operations dashboard that runs in any browser,
+      costs under €2 a month to operate, fits on a 50-inch wall screen —
+      and requires zero backend infrastructure to maintain.
+    </p>
+    <div class="meta">
+      <div class="meta-item"><strong>Platform</strong>Microsoft Sentinel</div>
+      <div class="meta-item"><strong>Stack</strong>Logic Apps · Blob Storage · HTML</div>
+      <div class="meta-item"><strong>Cost</strong>~€2 / month</div>
+      <div class="meta-item"><strong>By</strong>Jeroen van der Broek</div>
+    </div>
+    <div class="tags">
+      <div class="tag">KQL</div>
+      <div class="tag">Azure Logic Apps</div>
+      <div class="tag">Managed Identity</div>
+      <div class="tag">SecurityIncident</div>
+      <div class="tag">Blob Storage</div>
+      <div class="tag">No backend</div>
+    </div>
+  </div>
+</div>
+
+<div class="content">
+
+  <!-- ── 01 PROBLEM ── -->
+  <div class="sec"><div class="sec-num">1</div><div class="sec-title">The Problem</div></div>
+  <h2>Every SOC has too many screens and not enough overview</h2>
+  <p>Sentinel has workbooks. Defender has its portal. XDR has its own dashboard. Each tool shows a slice of what is happening, and none of them show the full picture in a way you can glance at from across the room.</p>
+  <p>We wanted one screen on the wall that answered the questions the team asks every morning: <strong>How many incidents came in overnight? Who has the oldest open ticket? Are we above our ingestion threshold? Any High alerts right now?</strong></p>
+  <p>The constraint that shaped the entire design: <strong>no backend server to maintain</strong>. No Node.js process to babysit, no database to back up, no VM to patch. Something that just works, refreshes itself, and does not need an engineer to keep alive.</p>
+
+  <div class="note">
+    <span class="callout-label">Context</span>
+    Infrastructure teams in healthcare are lean. Every piece of tooling that needs active maintenance is a liability. If the dashboard breaks on a Sunday night during an incident, nobody wants to debug a server — they want to work the incident.
+  </div>
+
+  <!-- ── 02 ARCHITECTURE ── -->
+  <div class="sec" id="architecture"><div class="sec-num">2</div><div class="sec-title">Architecture</div></div>
+  <h2>Two Logic Apps, one blob container, one HTML file</h2>
+  <p>Two Logic Apps run on a 5-minute schedule, query Sentinel via the Log Analytics REST API using Managed Identity, and write the results as plain JSON to Azure Blob Storage. The dashboard — a single HTML file — fetches those blobs with <code>fetch()</code> and renders everything client-side.</p>
+
+  <div class="arch">
+<span class="an">Microsoft Sentinel</span>  <span class="ac">(Log Analytics workspace)</span>
+<span class="aa">        │</span>
+<span class="aa">        │</span>  <span class="ac">POST /query · HTTP action · Managed Identity</span>
+<span class="aa">        ▼</span>
+<span class="an">Azure Logic Apps</span>  <span class="ac">(Consumption · every 5 minutes)</span>
+<span class="aa">        │</span>
+<span class="aa">        │</span>  <span class="ac">PUT application/json · Managed Identity</span>
+<span class="aa">        ▼</span>
+<span class="an">Azure Blob Storage</span>
+<span class="ac">  ├── incidents.json          </span><span class="an">24h new incidents</span>
+<span class="ac">  ├── open-incidents.json     </span><span class="an">all open assigned tickets</span>
+<span class="ac">  ├── age-distribution.json   </span><span class="an">open M/H/C for age chart</span>
+<span class="ac">  └── metrics.json            </span><span class="an">ingestion · heartbeat · alerts</span>
+<span class="aa">        │</span>
+<span class="aa">        │</span>  <span class="ac">fetch() every 5 minutes</span>
+<span class="aa">        ▼</span>
+<span class="an">dashboard.html</span>  <span class="ac">(browser · any device · any screen)</span>
+  </div>
+
+  <h3>Why Managed Identity instead of API keys</h3>
+  <p>Both Logic Apps authenticate using their <strong>System Assigned Managed Identity</strong>. No secrets. No API keys stored in the Logic App JSON. No credentials that expire, rotate, or leak in a Git commit. The only setup is assigning IAM roles once: <code>Log Analytics Reader</code> and <code>Storage Blob Data Contributor</code>.</p>
+  <p>We specifically avoided API connectors (the drag-and-drop ones in Logic Apps Designer) because they require OAuth connections that need periodic re-authorisation. Managed Identity via raw HTTP actions is more work to set up but <strong>never breaks</strong>.</p>
+
+  <h3>Why Blob Storage instead of a database</h3>
+  <p>The dashboard only needs to <em>read</em> data — it never writes anything back. Blob Storage is the simplest possible read endpoint: a URL that returns JSON. No connection strings, no SDK, no authentication headers. Just <code>fetch()</code>. The trade-off is last-write-wins with no history, which is fine for a live operational view that wants current state, not archives.</p>
+
+  <!-- ── 03 KQL ── -->
+  <div class="sec" id="kql"><div class="sec-num">3</div><div class="sec-title">KQL — Lessons Learned</div></div>
+  <h2>The queries that took the longest to get right</h2>
+  <p>Getting Sentinel incident data right is harder than it looks. <code>SecurityIncident</code> is an audit log — every change to an incident creates a new row. A single incident touched 50 times today has 50 rows, all with <code>TimeGenerated</code> set to the time of each change.</p>
+
+  <h3>Filter before summarize — the most important performance fix</h3>
+  <p>If you filter <em>after</em> <code>arg_max</code>, the query scans all of history before applying your where clause. On a workspace with years of incident data this causes silent timeouts inside Logic Apps — returning 1 or 2 results with no error message. That is exactly what we saw for weeks before finding the root cause.</p>
+
+<pre data-lang="KQL"><code><span class="cm">// ✗ Slow — scans entire history, then filters</span>
+<span class="cf">SecurityIncident</span>
+| <span class="cf">summarize</span> <span class="cf">arg_max</span>(TimeGenerated, *) by IncidentNumber
+| <span class="ck">where</span> TimeGenerated > <span class="cf">ago</span>(24h)
+
+<span class="cm">// ✓ Fast — pre-filters rows, then summarizes</span>
+<span class="cf">SecurityIncident</span>
+| <span class="ck">where</span> TimeGenerated > <span class="cf">ago</span>(24h)
+| <span class="ck">where</span> CreatedTime > <span class="cf">ago</span>(24h)
+| <span class="cf">summarize</span> <span class="cf">arg_max</span>(TimeGenerated, *) by IncidentNumber</code></pre>
+
+  <h3>CreatedTime vs TimeGenerated</h3>
+  <p><code>TimeGenerated</code> is updated every time an incident is touched — by playbooks, correlation rules, or an analyst adding a comment. Filtering on it for a "24h new incidents" view gives you incidents <em>modified</em> today, not <em>created</em> today. On a busy day this inflated our count from ~50 real new incidents to 90+ rows. The fix is one extra line:</p>
+
+<pre data-lang="KQL"><code><span class="ck">where</span> CreatedTime > <span class="cf">ago</span>(24h)</code></pre>
+
+  <h3>The analyst workload query needs no time filter</h3>
+  <p>For a true picture of what each analyst currently has on their plate, you want the current state of every open assigned incident — regardless of when it was created. Some incidents are weeks old. A time filter hides them entirely.</p>
+
+<pre data-lang="KQL"><code><span class="cm">// All open assigned incidents — ground truth for analyst workload</span>
+<span class="cf">SecurityIncident</span>
+| <span class="cf">summarize</span> <span class="cf">arg_max</span>(TimeGenerated, *) by IncidentNumber
+| <span class="ck">where</span> Status != <span class="cs">'Closed'</span>
+| <span class="ck">where</span> <span class="cf">isnotempty</span>(Owner.userPrincipalName)
+| <span class="ck">project</span> IncidentNumber, Title, Severity, Status,
+  CreatedTime, Owner=<span class="cf">tostring</span>(Owner.userPrincipalName)
+| <span class="ck">order by</span> CreatedTime asc</code></pre>
+
+  <div class="warn">
+    <span class="callout-label">Watch out</span>
+    Sentinel has multiple owner fields: <code>Owner.assignedTo</code>, <code>Owner.userPrincipalName</code>, <code>Owner.email</code>. Which one is populated depends on your Entra ID configuration and how incidents are assigned. In our environment <code>Owner.assignedTo</code> was empty for most incidents while <code>Owner.userPrincipalName</code> had the UPN. Check yours in Log Analytics before hardcoding the field name.
+  </div>
+
+  <h3>The age distribution query</h3>
+  <p>For the age chart we use <code>arg_max</code> on <code>LastModifiedTime</code> and exclude Low and Informational to focus only on actionable incidents:</p>
+
+<pre data-lang="KQL"><code><span class="cm">// Open incident age distribution — Low, Medium, High only</span>
+<span class="cf">SecurityIncident</span>
+| <span class="cf">summarize</span> <span class="cf">arg_max</span>(LastModifiedTime, *) by IncidentNumber
+| <span class="ck">where</span> Status != <span class="cs">'Closed'</span>
+| <span class="ck">where</span> Severity !<span class="cf">in</span>(<span class="cs">'Informational'</span>, <span class="cs">'Low'</span>)
+| <span class="ck">project</span> IncidentNumber, Title, Severity, Status,
+  CreatedTime, LastModifiedTime,
+  Owner=<span class="cf">tostring</span>(Owner.userPrincipalName)
+| <span class="ck">order by</span> LastModifiedTime desc</code></pre>
+
+  <!-- ── 04 DASHBOARD ── -->
+  <div class="sec"><div class="sec-num">4</div><div class="sec-title">The Dashboard</div></div>
+  <h2>Everything on one fixed screen</h2>
+  <p>The dashboard is designed for a wall-mounted display — no scroll, no tabs, all data visible at once. CSS Grid with fixed row heights fills the screen exactly at any resolution. Every element auto-refreshes every 5 minutes.</p>
+
+  <!-- ── DASHBOARD MOCK SCREENSHOT ── -->
+  <div style="margin:32px 0 8px;border:1px solid #1a1a1a;overflow:hidden;border-radius:3px;box-shadow:0 12px 48px rgba(0,0,0,.25);">
+    <!-- browser chrome -->
+    <div style="background:#2a2a2a;padding:9px 14px 8px;display:flex;align-items:center;gap:8px;border-bottom:1px solid #1a1a1a">
+      <div style="display:flex;gap:5px">
+        <div style="width:11px;height:11px;border-radius:50%;background:#ff5f57"></div>
+        <div style="width:11px;height:11px;border-radius:50%;background:#febc2e"></div>
+        <div style="width:11px;height:11px;border-radius:50%;background:#28c840"></div>
+      </div>
+      <div style="flex:1;background:#1c1c1c;border-radius:3px;padding:3px 10px;margin:0 10px;font-family:monospace;font-size:10px;color:#555">
+        🔒 soc-dashboard/dashboard.html
+      </div>
+    </div>
+    <!-- scale wrapper -->
+    <div style="overflow:hidden;background:#04060b;line-height:0;font-size:0">
+    <div style="transform:scale(0.6);transform-origin:top left;width:166.6%;font-size:initial;line-height:initial;font-family:'JetBrains Mono',monospace">
+
+      <!-- scanlines -->
+      <div style="position:relative">
+      <div style="position:absolute;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.06) 2px,rgba(0,0,0,0.06) 4px);pointer-events:none;z-index:99"></div>
+
+      <!-- NAV -->
+      <div style="background:#070b12;border-bottom:1px solid #111b2a;height:40px;display:flex;align-items:center;justify-content:space-between;padding:0 16px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="width:3px;height:16px;background:#d45c00;flex-shrink:0"></div>
+          <span style="font-family:'Good Times','Orbitron',sans-serif;font-size:10px;color:#c0d8ee;letter-spacing:2px">NORDSEC CYBERSECURITY · SOC OPERATIONS</span>
+          <div style="background:rgba(212,92,0,.15);padding:2px 10px;font-size:8px;color:#d45c00;letter-spacing:1px;clip-path:polygon(4px 0%,100% 0%,calc(100% - 4px) 100%,0% 100%)">SENTINEL</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="width:6px;height:6px;border-radius:50%;background:#00e676;box-shadow:0 0 8px #00e676"></div>
+          <span style="font-size:9px;color:#00e676;letter-spacing:2px">LIVE FEED</span>
+          <span style="font-size:9px;color:#3a5470;letter-spacing:.5px">14 jan. 09:22</span>
+        </div>
+      </div>
+
+      <!-- TICKER -->
+      <div style="background:rgba(255,45,85,.05);border-bottom:1px solid rgba(255,45,85,.12);height:28px;display:flex;align-items:center;padding:0 16px;gap:8px;overflow:hidden">
+        <div style="background:rgba(212,92,0,.2);padding:2px 10px;font-family:'Good Times',sans-serif;font-size:7px;color:#d45c00;letter-spacing:2px;flex-shrink:0;clip-path:polygon(0 0,100% 0,calc(100% - 4px) 100%,0 100%)">NCSC</div>
+        <div style="width:5px;height:5px;border-radius:50%;background:#ff2d55;flex-shrink:0"></div>
+        <span style="font-size:9px;color:rgba(255,45,85,.75);white-space:nowrap;letter-spacing:.5px">Critical vulnerability in Fortinet SSL-VPN exploited in the wild · 14 jan &nbsp;·&nbsp; Advisory: phishing campaigns targeting critical infrastructure · 13 jan &nbsp;·&nbsp; Active exploitation of Exchange Server zero-day · 12 jan</span>
+      </div>
+
+      <!-- STAT TILES -->
+      <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:4px;padding:4px;background:#04060b">
+        <div style="background:#070b12;border:1px solid #111b2a;border-top:2px solid #00d4ff;padding:7px 10px;position:relative;overflow:hidden">
+          <div style="position:absolute;right:2px;bottom:-6px;font-family:'Good Times',sans-serif;font-size:44px;color:rgba(255,255,255,.025);line-height:1">135</div>
+          <div style="font-family:'Good Times',sans-serif;font-size:7px;color:#3a5470;letter-spacing:1.5px;margin-bottom:5px">INCIDENTS · 24H</div>
+          <div style="font-family:'Good Times',sans-serif;font-size:30px;color:#c0d8ee;line-height:1;letter-spacing:-1px">135</div>
+          <div style="font-size:8px;color:#7aa8c8;margin-top:3px">43 closed</div>
+        </div>
+        <div style="background:#070b12;border:1px solid #111b2a;border-top:2px solid #ff2d55;padding:7px 10px;position:relative;overflow:hidden">
+          <div style="position:absolute;right:2px;bottom:-6px;font-family:'Good Times',sans-serif;font-size:44px;color:rgba(255,255,255,.025);line-height:1">92</div>
+          <div style="font-family:'Good Times',sans-serif;font-size:7px;color:#3a5470;letter-spacing:1.5px;margin-bottom:5px">NEW</div>
+          <div style="font-family:'Good Times',sans-serif;font-size:30px;color:#c0d8ee;line-height:1;letter-spacing:-1px">92</div>
+          <div style="font-size:8px;color:#7aa8c8;margin-top:3px">68% of total</div>
+        </div>
+        <div style="background:#070b12;border:1px solid #111b2a;border-top:2px solid #ff8c00;padding:7px 10px;position:relative;overflow:hidden">
+          <div style="position:absolute;right:2px;bottom:-6px;font-family:'Good Times',sans-serif;font-size:44px;color:rgba(255,255,255,.025);line-height:1">0</div>
+          <div style="font-family:'Good Times',sans-serif;font-size:7px;color:#3a5470;letter-spacing:1.5px;margin-bottom:5px">ACTIVE</div>
+          <div style="font-family:'Good Times',sans-serif;font-size:30px;color:#d45c00;line-height:1;letter-spacing:-1px">0</div>
+          <div style="font-size:8px;color:#7aa8c8;margin-top:3px">being investigated</div>
+        </div>
+        <div style="background:#070b12;border:1px solid #111b2a;border-top:2px solid #00e676;padding:7px 10px;position:relative;overflow:hidden">
+          <div style="position:absolute;right:2px;bottom:-6px;font-family:'Good Times',sans-serif;font-size:44px;color:rgba(255,255,255,.025);line-height:1">43</div>
+          <div style="font-family:'Good Times',sans-serif;font-size:7px;color:#3a5470;letter-spacing:1.5px;margin-bottom:5px">CLOSED · 24H</div>
+          <div style="font-family:'Good Times',sans-serif;font-size:30px;color:#c0d8ee;line-height:1;letter-spacing:-1px">43</div>
+          <div style="font-size:8px;color:#7aa8c8;margin-top:3px">32% closure rate</div>
+        </div>
+        <div style="background:#070b12;border:1px solid #111b2a;border-top:2px solid #ffc800;padding:7px 10px;position:relative;overflow:hidden">
+          <div style="font-family:'Good Times',sans-serif;font-size:7px;color:#3a5470;letter-spacing:1.5px;margin-bottom:5px">MTTR AVG</div>
+          <div style="font-family:'Good Times',sans-serif;font-size:30px;color:#c0d8ee;line-height:1;letter-spacing:-1px">2.0h</div>
+          <div style="font-size:8px;color:#7aa8c8;margin-top:3px">med 1.4h / p90 7.2h</div>
+        </div>
+        <div style="background:#070b12;border:1px solid #111b2a;border-top:2px solid #b388ff;padding:7px 10px;position:relative;overflow:hidden">
+          <div style="position:absolute;right:2px;bottom:-6px;font-family:'Good Times',sans-serif;font-size:44px;color:rgba(255,255,255,.025);line-height:1">25</div>
+          <div style="font-family:'Good Times',sans-serif;font-size:7px;color:#3a5470;letter-spacing:1.5px;margin-bottom:5px">SLA BREACHED</div>
+          <div style="font-family:'Good Times',sans-serif;font-size:30px;color:#ff2d55;line-height:1;letter-spacing:-1px">25</div>
+          <div style="font-size:8px;color:#7aa8c8;margin-top:3px">High &gt;2h · Med &gt;8h</div>
+        </div>
+      </div>
+
+      <!-- MIDDLE ROW -->
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;padding:0 4px;height:260px">
+
+        <!-- HIGH SEVERITY FEED -->
+        <div style="background:#070b12;border:1px solid #111b2a;display:flex;flex-direction:column;position:relative">
+          <div style="position:absolute;top:0;left:0;width:3px;height:100%;background:#d45c00;z-index:1"></div>
+          <div style="background:#0a0f18;border-bottom:1px solid #111b2a;padding:7px 12px 7px 14px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0">
+            <span style="font-family:'Good Times',sans-serif;font-size:8px;color:#c0d8ee;letter-spacing:2px">⚠ HIGH SEVERITY — 24H</span>
+            <span style="font-size:9px;color:#d45c00">13 incidents</span>
+          </div>
+          <div style="flex:1;overflow:hidden">
+            <table style="width:100%;border-collapse:collapse">
+              <thead><tr style="border-bottom:1px solid #111b2a">
+                <th style="padding:4px 8px;font-family:'Good Times',sans-serif;font-size:7px;color:#2a4060;text-align:left;font-weight:400;letter-spacing:1px">#</th>
+                <th style="padding:4px 8px;font-family:'Good Times',sans-serif;font-size:7px;color:#2a4060;text-align:left;font-weight:400;letter-spacing:1px">TITLE</th>
+                <th style="padding:4px 8px;font-family:'Good Times',sans-serif;font-size:7px;color:#2a4060;text-align:left;font-weight:400;letter-spacing:1px">SEV</th>
+                <th style="padding:4px 8px;font-family:'Good Times',sans-serif;font-size:7px;color:#2a4060;text-align:left;font-weight:400;letter-spacing:1px">OWNER</th>
+                <th style="padding:4px 8px;font-family:'Good Times',sans-serif;font-size:7px;color:#2a4060;text-align:left;font-weight:400;letter-spacing:1px">AGE</th>
+              </tr></thead>
+              <tbody style="font-size:11px">
+                <tr style="border-bottom:1px solid rgba(20,30,44,.6)">
+                  <td style="padding:5px 8px;color:#00d4ff;font-size:10px">#071412</td>
+                  <td style="padding:5px 8px;color:#c0d8ee;max-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Privileged Account Remote Execution</td>
+                  <td style="padding:5px 8px"><span style="background:rgba(255,45,85,.75);color:#fff;padding:2px 7px;font-size:8px;clip-path:polygon(4px 0%,100% 0%,calc(100% - 4px) 100%,0% 100%)">High</span></td>
+                  <td style="padding:5px 8px;color:#7aa8c8;font-size:10px">a.morgan</td>
+                  <td style="padding:5px 8px;color:#ff2d55;font-weight:700;font-size:10px">2.4h ⚠</td>
+                </tr>
+                <tr style="border-bottom:1px solid rgba(20,30,44,.6)">
+                  <td style="padding:5px 8px;color:#00d4ff;font-size:10px">#071409</td>
+                  <td style="padding:5px 8px;color:#c0d8ee;max-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">NTLM Credential Relay Attempt</td>
+                  <td style="padding:5px 8px"><span style="background:rgba(255,45,85,.75);color:#fff;padding:2px 7px;font-size:8px;clip-path:polygon(4px 0%,100% 0%,calc(100% - 4px) 100%,0% 100%)">High</span></td>
+                  <td style="padding:5px 8px;color:#7aa8c8;font-size:10px">t.chen</td>
+                  <td style="padding:5px 8px;color:#7aa8c8;font-size:10px">1.1h</td>
+                </tr>
+                <tr style="border-bottom:1px solid rgba(20,30,44,.6)">
+                  <td style="padding:5px 8px;color:#00d4ff;font-size:10px">#071395</td>
+                  <td style="padding:5px 8px;color:#c0d8ee;max-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Account Lifecycle Anomaly — Create &amp; Delete</td>
+                  <td style="padding:5px 8px"><span style="background:rgba(255,200,0,.15);color:#ffc800;padding:2px 7px;font-size:8px;clip-path:polygon(4px 0%,100% 0%,calc(100% - 4px) 100%,0% 100%)">High</span></td>
+                  <td style="padding:5px 8px;color:#7aa8c8;font-size:10px">a.morgan</td>
+                  <td style="padding:5px 8px;color:#ff2d55;font-weight:700;font-size:10px">9.2h ⚠</td>
+                </tr>
+                <tr>
+                  <td style="padding:5px 8px;color:#00d4ff;font-size:10px">#071374</td>
+                  <td style="padding:5px 8px;color:#c0d8ee;max-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Threat Intel Match — External IP Correlation</td>
+                  <td style="padding:5px 8px"><span style="background:rgba(255,45,85,.75);color:#fff;padding:2px 7px;font-size:8px;clip-path:polygon(4px 0%,100% 0%,calc(100% - 4px) 100%,0% 100%)">High</span></td>
+                  <td style="padding:5px 8px;color:#ff2d55;font-size:10px">—</td>
+                  <td style="padding:5px 8px;color:#7aa8c8;font-size:10px">0.8h</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- SEVERITY DIST -->
+        <div style="background:#070b12;border:1px solid #111b2a;display:flex;flex-direction:column;position:relative">
+          <div style="position:absolute;top:0;left:0;width:3px;height:100%;background:#d45c00;z-index:1"></div>
+          <div style="background:#0a0f18;border-bottom:1px solid #111b2a;padding:7px 12px 7px 14px;flex-shrink:0">
+            <span style="font-family:'Good Times',sans-serif;font-size:8px;color:#c0d8ee;letter-spacing:2px">SEVERITY DISTRIBUTION</span>
+          </div>
+          <div style="padding:14px 16px;display:flex;flex-direction:column;gap:12px;flex:1;justify-content:center">
+            <div style="display:flex;align-items:center;gap:10px"><div style="font-size:11px;color:#c0d8ee;width:110px">High</div><div style="flex:1;height:14px;background:#0a0f18"><div style="width:19%;height:100%;background:#ff2d55;display:flex;align-items:center;justify-content:flex-end;padding-right:5px"><span style="font-size:9px;color:#000;font-weight:700">13</span></div></div></div>
+            <div style="display:flex;align-items:center;gap:10px"><div style="font-size:11px;color:#c0d8ee;width:110px">Medium</div><div style="flex:1;height:14px;background:#0a0f18"><div style="width:53%;height:100%;background:#ffc800;display:flex;align-items:center;justify-content:flex-end;padding-right:5px"><span style="font-size:9px;color:#000;font-weight:700">36</span></div></div></div>
+            <div style="display:flex;align-items:center;gap:10px"><div style="font-size:11px;color:#c0d8ee;width:110px">Low</div><div style="flex:1;height:14px;background:#0a0f18"><div style="width:100%;height:100%;background:#00e676;display:flex;align-items:center;justify-content:flex-end;padding-right:5px"><span style="font-size:9px;color:#000;font-weight:700">67</span></div></div></div>
+            <div style="display:flex;align-items:center;gap:10px"><div style="font-size:11px;color:#c0d8ee;width:110px">Informational</div><div style="flex:1;height:14px;background:#0a0f18"><div style="width:28%;height:100%;background:#00d4ff;display:flex;align-items:center;justify-content:flex-end;padding-right:5px"><span style="font-size:9px;color:#000;font-weight:700">19</span></div></div></div>
+          </div>
+        </div>
+
+        <!-- INGESTION -->
+        <div style="background:#070b12;border:1px solid #111b2a;display:flex;flex-direction:column;position:relative">
+          <div style="position:absolute;top:0;left:0;width:3px;height:100%;background:#d45c00;z-index:1"></div>
+          <div style="background:#0a0f18;border-bottom:1px solid #111b2a;padding:7px 12px 7px 14px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0">
+            <span style="font-family:'Good Times',sans-serif;font-size:8px;color:#c0d8ee;letter-spacing:2px">DATA INGESTION — 24H</span>
+            <span style="font-size:10px;color:#00e676;font-weight:600">296.8 GB</span>
+          </div>
+          <div style="padding:10px 14px;flex:1;display:flex;flex-direction:column;gap:8px">
+            <div style="display:flex;align-items:flex-end;gap:3px;height:52px">
+              <div style="flex:1;height:55%;background:rgba(0,230,118,.12);border-top:2px solid #00e676"></div>
+              <div style="flex:1;height:62%;background:rgba(0,230,118,.12);border-top:2px solid #00e676"></div>
+              <div style="flex:1;height:80%;background:rgba(255,200,0,.12);border-top:2px solid #ffc800"></div>
+              <div style="flex:1;height:68%;background:rgba(0,230,118,.12);border-top:2px solid #00e676"></div>
+              <div style="flex:1;height:44%;background:rgba(0,230,118,.12);border-top:2px solid #00e676"></div>
+              <div style="flex:1;height:58%;background:rgba(0,230,118,.12);border-top:2px solid #00e676"></div>
+              <div style="flex:1;height:100%;background:rgba(0,230,118,.12);border-top:2px solid #00e676"></div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:5px">
+              <div style="display:flex;align-items:center;gap:8px"><div style="font-size:10px;color:#c0d8ee;width:100px">ActivityLogs</div><div style="flex:1;height:12px;background:#0a0f18"><div style="width:100%;height:100%;background:#00d4ff;display:flex;align-items:center;justify-content:flex-end;padding-right:4px"><span style="font-size:8px;color:#000;font-weight:700">111</span></div></div></div>
+              <div style="display:flex;align-items:center;gap:8px"><div style="font-size:10px;color:#c0d8ee;width:100px">DeviceProcessEvts</div><div style="flex:1;height:12px;background:#0a0f18"><div style="width:60%;height:100%;background:#00d4ff;display:flex;align-items:center;justify-content:flex-end;padding-right:4px"><span style="font-size:8px;color:#000;font-weight:700">66</span></div></div></div>
+              <div style="display:flex;align-items:center;gap:8px"><div style="font-size:10px;color:#c0d8ee;width:100px">DeviceEvents</div><div style="flex:1;height:12px;background:#0a0f18"><div style="width:22%;height:100%;background:#00d4ff;display:flex;align-items:center;justify-content:flex-end;padding-right:4px"><span style="font-size:8px;color:#000;font-weight:700">24</span></div></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ANALYST + AGE ROW -->
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;padding:4px 4px 0;height:160px">
+        <!-- ANALYST WORKLOAD -->
+        <div style="background:#070b12;border:1px solid #111b2a;display:flex;flex-direction:column;position:relative">
+          <div style="position:absolute;top:0;left:0;width:3px;height:100%;background:#d45c00;z-index:1"></div>
+          <div style="background:#0a0f18;border-bottom:1px solid #111b2a;padding:7px 12px 7px 14px;flex-shrink:0">
+            <span style="font-family:'Good Times',sans-serif;font-size:8px;color:#c0d8ee;letter-spacing:2px">ANALYST WORKLOAD</span>
+          </div>
+          <div style="padding:6px 8px;display:flex;flex-direction:column;gap:4px;flex:1">
+            <div style="border-left:3px solid #00d4ff;background:#0a0f18;padding:6px 12px;display:flex;align-items:center;clip-path:polygon(0 0,100% 0,calc(100% - 6px) 100%,0 100%)">
+              <div style="font-family:'Good Times',sans-serif;font-size:10px;color:#00d4ff;width:110px">A.MORGAN</div>
+              <div style="flex:1;display:grid;grid-template-columns:repeat(4,1fr);text-align:center">
+                <div><div style="font-size:8px;color:#2a4060">24h</div><div style="font-family:'Good Times',sans-serif;font-size:18px;color:#00d4ff;line-height:1.2">1</div></div>
+                <div><div style="font-size:8px;color:#2a4060">90d</div><div style="font-family:'Good Times',sans-serif;font-size:18px;color:#00d4ff;line-height:1.2">1</div></div>
+                <div><div style="font-size:8px;color:#2a4060">Hi</div><div style="font-family:'Good Times',sans-serif;font-size:18px;color:#2a4060;line-height:1.2">0</div></div>
+                <div><div style="font-size:8px;color:#2a4060">Old</div><div style="font-family:'Good Times',sans-serif;font-size:13px;color:#ff8c00;line-height:1.4">20.4H</div></div>
+              </div>
+            </div>
+            <div style="border-left:3px solid #00e676;background:#0a0f18;padding:6px 12px;display:flex;align-items:center;clip-path:polygon(0 0,100% 0,calc(100% - 6px) 100%,0 100%)">
+              <div style="font-family:'Good Times',sans-serif;font-size:10px;color:#00e676;width:110px">T.CHEN</div>
+              <div style="flex:1;display:grid;grid-template-columns:repeat(4,1fr);text-align:center">
+                <div><div style="font-size:8px;color:#2a4060">24h</div><div style="font-family:'Good Times',sans-serif;font-size:18px;color:#2a4060;line-height:1.2">0</div></div>
+                <div><div style="font-size:8px;color:#2a4060">90d</div><div style="font-family:'Good Times',sans-serif;font-size:18px;color:#00e676;line-height:1.2">1</div></div>
+                <div><div style="font-size:8px;color:#2a4060">Hi</div><div style="font-family:'Good Times',sans-serif;font-size:18px;color:#2a4060;line-height:1.2">0</div></div>
+                <div><div style="font-size:8px;color:#2a4060">Old</div><div style="font-family:'Good Times',sans-serif;font-size:13px;color:#ff2d55;line-height:1.4">11.5D</div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- AGE DIST spanning cols 2+3 -->
+        <div style="background:#070b12;border:1px solid #111b2a;grid-column:2/4;display:flex;flex-direction:column;position:relative">
+          <div style="position:absolute;top:0;left:0;width:3px;height:100%;background:#d45c00;z-index:1"></div>
+          <div style="background:#0a0f18;border-bottom:1px solid #111b2a;padding:7px 12px 7px 14px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0">
+            <span style="font-family:'Good Times',sans-serif;font-size:8px;color:#c0d8ee;letter-spacing:2px">OPEN INCIDENTS — AGE</span>
+            <span style="font-size:10px;color:#d45c00">42 open</span>
+          </div>
+          <div style="padding:10px 16px;flex:1;display:flex;flex-direction:column;gap:8px;justify-content:center">
+            <div style="display:flex;align-items:center;gap:10px"><div style="font-size:11px;color:#c0d8ee;width:70px">&lt; 1 day</div><div style="flex:1;height:14px;background:#0a0f18"><div style="width:64%;height:100%;background:#00e676;clip-path:polygon(0 0,100% 0,calc(100% - 5px) 100%,0 100%);display:flex;align-items:center;justify-content:flex-end;padding-right:5px"><span style="font-size:9px;color:#000;font-weight:700">27</span></div></div></div>
+            <div style="display:flex;align-items:center;gap:10px"><div style="font-size:11px;color:#c0d8ee;width:70px">1 – 3d</div><div style="flex:1;height:14px;background:#0a0f18"><div style="width:5%;height:100%;background:#66ffaa;clip-path:polygon(0 0,100% 0,calc(100% - 5px) 100%,0 100%);display:flex;align-items:center;justify-content:flex-end;padding-right:5px"><span style="font-size:9px;color:#000;font-weight:700">2</span></div></div></div>
+            <div style="display:flex;align-items:center;gap:10px"><div style="font-size:11px;color:#c0d8ee;width:70px">3 – 7d</div><div style="flex:1;height:14px;background:#0a0f18"><div style="width:12%;height:100%;background:#ffc800;clip-path:polygon(0 0,100% 0,calc(100% - 5px) 100%,0 100%);display:flex;align-items:center;justify-content:flex-end;padding-right:5px"><span style="font-size:9px;color:#000;font-weight:700">5</span></div></div></div>
+            <div style="display:flex;align-items:center;gap:10px"><div style="font-size:11px;color:#c0d8ee;width:70px">1 – 2w</div><div style="flex:1;height:14px;background:#0a0f18"><div style="width:40%;height:100%;background:#ff8c00;clip-path:polygon(0 0,100% 0,calc(100% - 5px) 100%,0 100%);display:flex;align-items:center;justify-content:flex-end;padding-right:5px"><span style="font-size:9px;color:#000;font-weight:700">17</span></div></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- INCIDENT FEED -->
+      <div style="margin:4px;background:#070b12;border:1px solid #111b2a;position:relative">
+        <div style="position:absolute;top:0;left:0;width:3px;height:100%;background:#d45c00;z-index:1"></div>
+        <div style="background:#0a0f18;border-bottom:1px solid #111b2a;padding:7px 12px 7px 14px;display:flex;justify-content:space-between;align-items:center">
+          <span style="font-family:'Good Times',sans-serif;font-size:8px;color:#c0d8ee;letter-spacing:2px">INCIDENT FEED — LAST 24H</span>
+          <div style="display:flex;gap:4px">
+            <span style="font-family:'Good Times',sans-serif;font-size:7px;color:#3a5470;border:1px solid #1e2e46;padding:2px 9px;clip-path:polygon(4px 0%,100% 0%,calc(100% - 4px) 100%,0% 100%)">ALL</span>
+            <span style="font-family:'Good Times',sans-serif;font-size:7px;color:#3a5470;border:1px solid #1e2e46;padding:2px 9px;clip-path:polygon(4px 0%,100% 0%,calc(100% - 4px) 100%,0% 100%)">HIGH</span>
+            <span style="font-family:'Good Times',sans-serif;font-size:7px;color:#3a5470;border:1px solid #1e2e46;padding:2px 9px;clip-path:polygon(4px 0%,100% 0%,calc(100% - 4px) 100%,0% 100%)">MEDIUM</span>
+            <span style="font-family:'Good Times',sans-serif;font-size:7px;color:#3a5470;border:1px solid #1e2e46;padding:2px 9px;clip-path:polygon(4px 0%,100% 0%,calc(100% - 4px) 100%,0% 100%)">LOW</span>
+            <span style="font-family:'Good Times',sans-serif;font-size:7px;color:#3a5470;border:1px solid #1e2e46;padding:2px 9px;clip-path:polygon(4px 0%,100% 0%,calc(100% - 4px) 100%,0% 100%)">INFO</span>
+            <span style="font-family:'Good Times',sans-serif;font-size:7px;color:#3a5470;border:1px solid #1e2e46;padding:2px 9px;clip-path:polygon(4px 0%,100% 0%,calc(100% - 4px) 100%,0% 100%)">NEW</span>
+            <span style="font-family:'Good Times',sans-serif;font-size:7px;color:#d45c00;border:1px solid #d45c00;padding:2px 9px;clip-path:polygon(4px 0%,100% 0%,calc(100% - 4px) 100%,0% 100%)">SLA ⚠</span>
+          </div>
+        </div>
+        <table style="width:100%;border-collapse:collapse;font-size:10px">
+          <thead><tr style="border-bottom:1px solid #111b2a">
+            <th style="padding:4px 8px;font-family:'Good Times',sans-serif;font-size:7px;color:#2a4060;text-align:left;font-weight:400;letter-spacing:1px">#</th>
+            <th style="padding:4px 8px;font-family:'Good Times',sans-serif;font-size:7px;color:#2a4060;text-align:left;font-weight:400;letter-spacing:1px">TITLE</th>
+            <th style="padding:4px 8px;font-family:'Good Times',sans-serif;font-size:7px;color:#2a4060;text-align:left;font-weight:400;letter-spacing:1px">SEV</th>
+            <th style="padding:4px 8px;font-family:'Good Times',sans-serif;font-size:7px;color:#2a4060;text-align:left;font-weight:400;letter-spacing:1px">STATUS</th>
+            <th style="padding:4px 8px;font-family:'Good Times',sans-serif;font-size:7px;color:#2a4060;text-align:left;font-weight:400;letter-spacing:1px">OWNER</th>
+            <th style="padding:4px 8px;font-family:'Good Times',sans-serif;font-size:7px;color:#2a4060;text-align:left;font-weight:400;letter-spacing:1px">CREATED</th>
+            <th style="padding:4px 8px;font-family:'Good Times',sans-serif;font-size:7px;color:#2a4060;text-align:left;font-weight:400;letter-spacing:1px">AGE</th>
+            <th style="padding:4px 8px;font-family:'Good Times',sans-serif;font-size:7px;color:#2a4060;text-align:left;font-weight:400;letter-spacing:1px">PRODUCT</th>
+          </tr></thead>
+          <tbody>
+            <tr style="border-bottom:1px solid rgba(20,30,44,.5)">
+              <td style="padding:4px 8px;color:#00d4ff">#071412</td><td style="padding:4px 8px;color:#c0d8ee">Threat Intel — Domain IOC Match</td>
+              <td style="padding:4px 8px"><span style="background:rgba(255,200,0,.15);color:#ffc800;padding:1px 6px;font-size:8px;clip-path:polygon(4px 0%,100% 0%,calc(100% - 4px) 100%,0% 100%)">Medium</span></td>
+              <td style="padding:4px 8px"><span style="background:rgba(255,45,85,.12);color:#ff2d55;padding:1px 6px;font-size:8px;clip-path:polygon(4px 0%,100% 0%,calc(100% - 4px) 100%,0% 100%)">New</span></td>
+              <td style="padding:4px 8px;color:#3a5470">—</td><td style="padding:4px 8px;color:#7aa8c8">14 jan, 01:46</td>
+              <td style="padding:4px 8px;color:#ff2d55;font-weight:700">8.1h ⚠</td><td style="padding:4px 8px;color:#3a5470">Sentinel</td>
+            </tr>
+            <tr style="border-bottom:1px solid rgba(20,30,44,.5)">
+              <td style="padding:4px 8px;color:#00d4ff">#071409</td><td style="padding:4px 8px;color:#c0d8ee">Privileged Role Assignment — M365 Admin</td>
+              <td style="padding:4px 8px"><span style="background:rgba(255,200,0,.15);color:#ffc800;padding:1px 6px;font-size:8px;clip-path:polygon(4px 0%,100% 0%,calc(100% - 4px) 100%,0% 100%)">Medium</span></td>
+              <td style="padding:4px 8px"><span style="background:rgba(255,45,85,.12);color:#ff2d55;padding:1px 6px;font-size:8px;clip-path:polygon(4px 0%,100% 0%,calc(100% - 4px) 100%,0% 100%)">New</span></td>
+              <td style="padding:4px 8px;color:#3a5470">—</td><td style="padding:4px 8px;color:#7aa8c8">14 jan, 08:25</td>
+              <td style="padding:4px 8px;color:#ff2d55;font-weight:700">9.4h ⚠</td><td style="padding:4px 8px;color:#3a5470">Sentinel</td>
+            </tr>
+            <tr style="border-bottom:1px solid rgba(20,30,44,.5)">
+              <td style="padding:4px 8px;color:#00d4ff">#071394</td><td style="padding:4px 8px;color:#c0d8ee">Brute-Force Attempt — Auth Protocol Abuse</td>
+              <td style="padding:4px 8px"><span style="background:rgba(255,200,0,.15);color:#ffc800;padding:1px 6px;font-size:8px;clip-path:polygon(4px 0%,100% 0%,calc(100% - 4px) 100%,0% 100%)">Medium</span></td>
+              <td style="padding:4px 8px"><span style="background:rgba(255,200,0,.12);color:#ffc800;padding:1px 6px;font-size:8px;clip-path:polygon(4px 0%,100% 0%,calc(100% - 4px) 100%,0% 100%)">Active</span></td>
+              <td style="padding:4px 8px;color:#7aa8c8">a.morgan@corp.example</td><td style="padding:4px 8px;color:#7aa8c8">13 jan, 17:38</td>
+              <td style="padding:4px 8px;color:#ff2d55;font-weight:700">36.2h ⚠</td><td style="padding:4px 8px;color:#3a5470">ATP</td>
+            </tr>
+            <tr>
+              <td style="padding:4px 8px;color:#00d4ff">#071385</td><td style="padding:4px 8px;color:#c0d8ee">Password Spray — Federation Login Endpoint</td>
+              <td style="padding:4px 8px"><span style="background:rgba(255,200,0,.15);color:#ffc800;padding:1px 6px;font-size:8px;clip-path:polygon(4px 0%,100% 0%,calc(100% - 4px) 100%,0% 100%)">Medium</span></td>
+              <td style="padding:4px 8px"><span style="background:rgba(255,45,85,.12);color:#ff2d55;padding:1px 6px;font-size:8px;clip-path:polygon(4px 0%,100% 0%,calc(100% - 4px) 100%,0% 100%)">New</span></td>
+              <td style="padding:4px 8px;color:#3a5470">—</td><td style="padding:4px 8px;color:#7aa8c8">13 jan, 16:52</td>
+              <td style="padding:4px 8px;color:#ff2d55;font-weight:700">37.0h ⚠</td><td style="padding:4px 8px;color:#3a5470">Sentinel</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      </div><!-- /relative scanline wrapper -->
+    </div><!-- /scale inner -->
+    </div><!-- /scale outer -->
+  </div><!-- /browser chrome wrapper -->
+  <p style="font-size:13px;color:#6b6560;font-style:italic;margin-top:8px;margin-bottom:32px">Dashboard running live on a 55" wall screen in the SOC — all incident titles, usernames and hostnames anonymised.</p>
+
+
+
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Section</th><th>What it shows</th><th>Source</th></tr></thead>
+      <tbody>
+        <tr><td>6 stat tiles</td><td><strong>Total · New · Active · Closed · MTTR · SLA</strong> — last 24h</td><td>incidents.json</td></tr>
+        <tr><td>Medium/High feed</td><td>Severity ≥ Medium only · pulsing badge on High · SLA breach in red</td><td>incidents.json</td></tr>
+        <tr><td>Severity bars</td><td>Distribution of all 24h incidents by severity</td><td>incidents.json</td></tr>
+        <tr><td>Ingestion GB</td><td>7-day sparkline with daily totals, color-coded by threshold</td><td>metrics.json</td></tr>
+        <tr><td>Analyst workload</td><td>One row per analyst: open today / open all-time / Crit+High / oldest</td><td>open-incidents.json</td></tr>
+        <tr><td>Age distribution</td><td>Open M/H/C tickets by age — green → red gradient</td><td>age-distribution.json</td></tr>
+        <tr><td>Incident feed</td><td>Full 24h feed, filterable: All / High / Medium / New / SLA</td><td>incidents.json</td></tr>
+        <tr><td>Threat ticker</td><td>Live NCSC RSS feed scrolling across the top</td><td>feeds.ncsc.nl</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Ingestion color thresholds</h3>
+  <p>Each bar in the sparkline is independently colored based on that day's total. The threshold values can be adjusted in the <code>gbColor()</code> function in <code>dashboard.html</code>.</p>
+
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Color</th><th>Threshold</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td class="green">■ Green</td><td>&lt; 250 GB/day</td><td>Normal — within baseline</td></tr>
+        <tr><td class="amber">■ Yellow</td><td>≥ 250 GB/day</td><td>Above baseline — monitor</td></tr>
+        <tr><td class="orng">■ Orange</td><td>≥ 300 GB/day</td><td>Elevated — investigate</td></tr>
+        <tr><td class="red">■ Red</td><td>≥ 350 GB/day</td><td>Spike or misconfiguration</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ── 05 DEPLOY ── -->
+  <div class="sec" id="deploy"><div class="sec-num">5</div><div class="sec-title">Deployment</div></div>
+  <h2>From zero to live dashboard in an afternoon</h2>
+
+  <ol class="steps">
+    <li>
+      <div>
+        <strong>Create a Storage Account and Blob container</strong>
+        Any tier works. Add a CORS rule: Allowed origins <code>*</code>, methods <code>GET</code>, max age <code>86400</code>. Set container access level to <em>Blob</em> for public anonymous read and for security reasons apply a IP Filter!
+      </div>
+    </li>
+    <li>
+      <div>
+        <strong>Deploy the Incidents Logic App</strong>
+        Create a Consumption Logic App, enable System Assigned Managed Identity, open Code view, paste <code>logicapps/logicapp-incidents.json</code>. Replace the placeholders: workspace ID, storage account name, container name.
+      </div>
+    </li>
+    <li>
+      <div>
+        <strong>Deploy the Metrics Logic App</strong>
+        Same process using <code>logicapps/logicapp-metrics.json</code>. This one handles ingestion stats, agent heartbeat, top alerts, and sign-in summary.
+      </div>
+    </li>
+    <li>
+      <div>
+        <strong>Assign IAM roles to both Managed Identities</strong>
+        On the Log Analytics workspace: <code>Log Analytics Reader</code> + <code>Microsoft Sentinel Reader</code>. On the storage account: <code>Storage Blob Data Contributor</code>.
+      </div>
+    </li>
+    <li>
+      <div>
+        <strong>Run both Logic Apps manually to verify</strong>
+        Check the run history — all actions should be green. Then check your blob container: four JSON files should appear within seconds.
+      </div>
+    </li>
+    <li>
+      <div>
+        <strong>Configure dashboard.html and open in Chrome</strong>
+        Set the <code>BLOB</code> constant at the top of the script block to your storage URL. Open the file in Chrome, press F11 for fullscreen. Mount on wall.
+      </div>
+    </li>
+  </ol>
+
+  <div class="cost">
+    <div class="cost-num">~€2</div>
+    <div class="cost-txt">
+      <strong>Estimated monthly Azure cost</strong>
+      Logic Apps Consumption at ~€0.000025 per action. Two Logic Apps, 5-minute intervals, ~10 actions each = roughly €1–2/month. Blob storage for a few KB of JSON per write is negligible.
+    </div>
+  </div>
+
+  <div class="tip">
+    <span class="callout-label">Better architecture</span>
+    Replace the public blob with <strong>Azure Static Web Apps</strong> (free tier). This avoids needing public read access on the container and lets you add authentication so only your team can view the dashboard. The Logic Apps stay exactly the same. But: users have to log in again after a while (token expiry, session timeout, or browser closure).
+  </div>
+
+  <!-- ── 06 REPO ── -->
+  <div class="sec"><div class="sec-num">6</div><div class="sec-title">Repository</div></div>
+  <h2>What is in the repo</h2>
+
+  <div class="tree">
+<span class="td">soc-dashboard/</span>
+<span class="tf">├── dashboard.html              </span><span class="tn">← full TV dashboard · single file · zero dependencies</span>
+<span class="tf">├── SETUP.md                    </span><span class="tn">← step-by-step deployment guide with IAM details</span>
+<span class="td">├── logicapps/</span>
+<span class="tf">│   ├── logicapp-incidents.json </span><span class="tn">← incidents + open + age distribution queries</span>
+<span class="tf">│   └── logicapp-metrics.json   </span><span class="tn">← ingestion, heartbeat, top alerts, sign-ins</span>
+<span class="td">└── queries/</span>
+<span class="tf">    ├── incidents-24h.kql</span>
+<span class="tf">    ├── open-incidents-assigned.kql</span>
+<span class="tf">    ├── open-incidents-age-distribution.kql</span>
+<span class="tf">    ├── ingestion-by-table.kql</span>
+<span class="tf">    └── ingestion-trend-7d.kql</span>
+  </div>
+
+  <h3>What to improve or add</h3>
+  <p><strong>Azure Static Web Apps.</strong> Currently the container needs public read access. Static Web Apps is free, supports custom domains, and lets you add Entra ID authentication so only your team can reach the dashboard. Downside of that is reauthentication</p>
+  <p><strong>A Teams alerting Logic App.</strong> A third Logic App that fires a Teams adaptive card when a High incident has been open for more than 2 hours without an owner. Straightforward to add with the same Managed Identity pattern.</p>
+  <p><strong>Historical snapshots.</strong> Each Logic App run overwrites the previous blob. Appending a timestamped copy would enable 7/30/90-day trending charts without any additional infrastructure.</p>
+
+  <hr>
+
+  <div class="note">
+    <span class="callout-label">Contributing</span>
+    PRs welcome. Especially interested in support for other SIEM platforms, a light/dark theme toggle, and KQL queries for Defender for Endpoint telemetry. See the repo on GitHub.
+  </div>
+
+</div>
+
+<footer>
+  <p>Built for enterprise SOC teams · Microsoft Sentinel · MIT License · Adapt freely</p>
+  <a class="footer-gh" href="https://github.com/umcg-cybersecurity/soc-dashboard" target="_blank">View on GitHub ↗</a>
+</footer>
+
+<script>
+// Scroll reveal
+const obs = new IntersectionObserver(entries => {
+  entries.forEach(e => { if(e.isIntersecting){ e.target.classList.add('in'); obs.unobserve(e.target); }});
+}, { threshold: 0.08 });
+document.querySelectorAll('h2,h3,p,pre,.arch,.warn,.note,.tip,.cost,.tree,.tbl-wrap,ol,.sec').forEach(el => {
+  el.classList.add('reveal');
+  obs.observe(el);
+});
+</script>
+</body>
+</html>

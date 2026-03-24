@@ -1,0 +1,806 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SOC Live — Sentinel Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=JetBrains+Mono:wght@300;400;500;600&family=Quantico:wght@400;700&display=swap" rel="stylesheet">
+
+
+
+
+
+<style>
+:root {
+  --bg:     #05070c;
+  --s1:     #090d14;
+  --s2:     #0d1219;
+  --border: #141e2c;
+  --b2:     #1a2840;
+  --cyan:   #00d4ff;
+  --red:    #ff2d55;
+  --orange: #ff8c00;
+  --yellow: #ffc800;
+  --green:  #00e676;
+  --purple: #b388ff;
+  --dim:    #3a5470;
+  --text:   #8ab0cc;
+  --bright: #c8dff0;
+  --mono:   "JetBrains Mono", monospace;
+  --ui:     "Rajdhani", sans-serif;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{
+  width:100vw; height:100vh;
+  overflow:hidden;
+  background:var(--bg);
+  color:var(--text);
+  font-family:var(--ui);
+}
+body::after{
+  content:""; position:fixed; inset:0; pointer-events:none; z-index:9999;
+  background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,0,0,0.05) 3px,rgba(0,0,0,0.05) 4px);
+}
+
+/* ── LAYOUT ── */
+.root{
+  display:grid;
+  grid-template-rows:44px 37px 1fr;
+  height:100vh;
+  gap:0;
+}
+
+/* ── NAV ── */
+nav{
+  background:rgba(5,7,12,0.98);
+  border-bottom:1px solid var(--border);
+  display:flex; align-items:center; justify-content:space-between;
+  padding:0 20px;
+  flex-shrink:0;
+}
+.nav-left{display:flex;align-items:center;gap:14px;}
+.nav-right{display:flex;align-items:center;gap:14px;}
+.live-badge{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:9px;color:var(--green);letter-spacing:1.5px;}
+.live-dot{width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);animation:blink 2s ease-in-out infinite;}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
+.upd-time{font-family:var(--mono);font-size:9px;color:var(--dim);}
+.nav-pill{font-family:var(--ui);font-size:10px;font-weight:600;letter-spacing:1.5px;padding:3px 10px;border:1px solid var(--border);color:var(--dim);text-transform:uppercase;background:none;cursor:pointer;transition:all .2s;}
+.nav-pill:hover,.nav-pill.active{border-color:#d45c00;color:#d45c00;background:rgba(212,92,0,.08);}
+.filter-btn.active{border-color:#d45c00 !important;color:#d45c00 !important;background:rgba(212,92,0,.1) !important;box-shadow:0 0 8px rgba(212,92,0,.2);}
+#btnRefresh{font-family:var(--mono);font-size:9px;letter-spacing:1px;color:#d45c00;background:none;border:1px solid #d45c00;padding:3px 10px;cursor:pointer;text-transform:uppercase;}
+.err{background:rgba(255,45,85,.06);border:1px solid rgba(255,45,85,.25);padding:6px 12px;font-family:var(--mono);font-size:10px;color:var(--red);display:none;position:fixed;top:44px;left:0;right:0;z-index:200;}
+
+/* ── MAIN GRID ── */
+.main{
+  display:grid;
+  grid-template-columns:1fr 1fr 1fr;
+  grid-template-rows:auto 1fr 1fr 300px;
+  gap:6px;
+  padding:6px;
+  height:100%;
+  overflow:hidden;
+}
+
+/* tiles row spans full width */
+.tiles-row{
+  grid-column:1 / -1;
+  display:grid;
+  grid-template-columns:repeat(6,1fr);
+  gap:6px;
+}
+
+/* ── TILE ── */
+.tile{
+  background:var(--s1);border:1px solid var(--border);
+  padding:12px 14px;position:relative;overflow:hidden;
+}
+.tile::before{content:"";position:absolute;top:0;left:0;right:0;height:2px;}
+.t-cyan::before   {background:var(--cyan);}
+.t-red::before    {background:var(--red);}
+.t-orange::before {background:var(--orange);}
+.t-green::before  {background:var(--green);}
+.t-yellow::before {background:var(--yellow);}
+.t-purple::before {background:var(--purple);}
+.tile-lbl{font-family:var(--ui);font-size:9px;font-weight:600;color:var(--dim);letter-spacing:2px;text-transform:uppercase;margin-bottom:6px;}
+.tile-val{font-family:var(--ui);font-size:34px;font-weight:700;color:var(--bright);line-height:1;margin-bottom:3px;}
+.tile-sub{font-family:var(--mono);font-size:9px;color:var(--text);}
+
+/* ── CARD ── */
+.card{
+  background:var(--s1);border:1px solid var(--border);
+  padding:10px 12px;overflow:hidden;
+  display:flex;flex-direction:column;
+}
+.card-hd{
+  font-family:var(--ui);font-size:10px;font-weight:600;color:var(--bright);
+  letter-spacing:2px;text-transform:uppercase;
+  margin-bottom:8px;flex-shrink:0;
+  display:flex;justify-content:space-between;align-items:center;
+  border-left:3px solid #d45c00;padding-left:8px;
+}
+.card-hd-count{color:#d45c00;font-family:var(--mono);}
+.card-body{flex:1;overflow:hidden;}
+
+/* ── BAR CHART ── */
+.bars{display:flex;flex-direction:column;gap:5px;}
+.bar-row{display:flex;align-items:center;gap:8px;}
+.bar-lbl{font-family:var(--mono);font-size:9px;color:var(--bright);width:100px;flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.bar-track{flex:1;height:14px;background:var(--s2);}
+.bar-fill{height:100%;display:flex;align-items:center;justify-content:flex-end;padding-right:5px;min-width:20px;transition:width 1s cubic-bezier(.22,1,.36,1);}
+.bar-num{font-family:var(--mono);font-size:9px;color:#000;font-weight:600;}
+
+/* ── TABLE ── */
+.tbl-wrap{overflow:auto;flex:1;}
+table{width:100%;border-collapse:collapse;}
+thead tr{border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--s1);z-index:1;}
+thead th{text-align:left;padding:4px 8px;font-family:var(--ui);font-size:9px;font-weight:600;color:var(--dim);letter-spacing:1.5px;text-transform:uppercase;white-space:nowrap;}
+tbody tr{border-bottom:1px solid rgba(20,30,44,.5);transition:background .1s;}
+tbody tr:hover{background:rgba(0,212,255,.03);}
+tbody tr:last-child{border-bottom:none;}
+tbody td{padding:5px 8px;font-size:10px;color:var(--bright);white-space:nowrap;}
+
+/* ── BADGES ── */
+.sev{font-family:var(--mono);font-size:8px;font-weight:600;letter-spacing:.5px;padding:1px 5px;text-transform:uppercase;border:1px solid;display:inline-block;}
+.sev-High,.sev-Critical{color:var(--red);border-color:rgba(255,45,85,.3);background:rgba(255,45,85,.08);}
+.sev-Medium{color:var(--yellow);border-color:rgba(255,200,0,.3);background:rgba(255,200,0,.07);}
+.sev-Low{color:var(--green);border-color:rgba(0,230,118,.3);background:rgba(0,230,118,.07);}
+.sev-Informational{color:var(--cyan);border-color:rgba(0,212,255,.2);background:rgba(0,212,255,.05);}
+.stat-badge{font-family:var(--mono);font-size:8px;padding:1px 5px;text-transform:uppercase;letter-spacing:.5px;}
+.stat-New{color:var(--red);background:rgba(255,45,85,.1);}
+.stat-Active{color:var(--yellow);background:rgba(255,200,0,.1);}
+.stat-Closed{color:var(--green);background:rgba(0,230,118,.07);}
+
+/* ── ANALYST ── */
+.analyst-grid{display:flex;flex-direction:column;gap:5px;}
+.analyst-tile{border-left:3px solid;padding:8px 14px;display:flex;align-items:center;gap:0;transition:opacity .2s;background:var(--s2);}
+.analyst-tile:hover{opacity:.85;}
+.analyst-name{font-family:var(--ui);font-size:11px;font-weight:600;width:160px;flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.a-row{display:flex;justify-content:space-between;margin-bottom:2px;}
+.a-lbl{font-family:var(--mono);font-size:8px;color:var(--dim);}
+.a-val{font-family:var(--mono);font-size:8px;color:var(--text);}
+
+/* ── SPARKLINE ── */
+.sparkwrap{display:flex;align-items:flex-end;gap:3px;height:50px;}
+.sparkwrap div{flex:1;}
+
+/* ── GLOW PULSE ── */
+.sev-Critical { animation: critpulse 2.5s ease-in-out infinite; }
+@keyframes critpulse {
+  0%,100% { box-shadow: 0 0 0 rgba(255,45,85,0); }
+  50%      { box-shadow: 0 0 8px rgba(255,45,85,.6); }
+}
+.sev-High { animation: highpulse 3s ease-in-out infinite; }
+@keyframes highpulse {
+  0%,100% { box-shadow: 0 0 0 rgba(255,45,85,0); }
+  50%      { box-shadow: 0 0 5px rgba(255,45,85,.35); }
+}
+
+/* ── CARD ACCENT ── */
+.card { border-top: 1px solid var(--border); }
+.card-hd { border-bottom: 1px solid var(--border); padding-bottom: 7px; margin-bottom: 10px; }
+
+/* ── THREAT TICKER ── */
+.ticker {
+  background: rgba(255,45,85,.07);
+  border-bottom: 1px solid rgba(255,45,85,.2);
+  padding: 6px 20px;
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--red);
+  letter-spacing: 1.5px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.ticker-dot { width:5px;height:5px;border-radius:50%;background:var(--red);box-shadow:0 0 6px var(--red);flex-shrink:0;animation:blink 1.5s ease-in-out infinite; }
+.ticker-scroll { white-space:nowrap; animation: tickerscroll 30s linear infinite; }
+@keyframes tickerscroll { 0%{transform:translateX(0)} 100%{transform:translateX(-50%)} }
+
+/* ── LOADING ── */
+.empty{padding:16px;text-align:center;font-family:var(--mono);font-size:10px;color:var(--dim);}
+.spin{display:inline-block;width:8px;height:8px;border:1.5px solid var(--border);border-top-color:var(--cyan);border-radius:50%;animation:rot .7s linear infinite;margin-right:4px;}
+@keyframes rot{to{transform:rotate(360deg)}}
+
+/* AGE DISTRIBUTION BARS */
+.age-bar-row{display:flex;align-items:center;gap:8px;margin-bottom:5px;}
+.age-bar-lbl{font-family:var(--mono) !important;font-size:10px;color:var(--bright);width:72px;flex-shrink:0;letter-spacing:0;font-weight:400;}
+.age-bar-track{flex:1;height:15px;background:var(--s2);}
+.age-bar-fill{height:100%;display:flex;align-items:center;justify-content:flex-end;padding-right:5px;min-width:20px;transition:width 1s cubic-bezier(.22,1,.36,1);clip-path:polygon(0 0,100% 0,calc(100% - 5px) 100%,0 100%);}
+.age-bar-num{font-family:var(--mono) !important;font-size:9px;color:#000;font-weight:700;}
+</style>
+</head>
+<body>
+<div class="root">
+
+<nav>
+  <div class="nav-left">
+    <span style="font-family:var(--ui);font-size:13px;font-weight:700;color:var(--bright);letter-spacing:2px;">SOC<span style="color:#d45c00">:</span></span>
+    <div class="nav-pill" style="border-color:rgba(212,92,0,.5);color:#d45c00">Microsoft Sentinel</div>
+    </div>
+  <div class="nav-right">
+    <div class="live-badge"><div class="live-dot"></div>LIVE</div>
+    <div class="upd-time" id="updTime">—</div>
+    <button id="btnRefresh">↺ Refresh</button>
+  </div>
+</nav>
+
+<div class="err" id="errBanner"></div>
+
+<div class="ticker">
+  <div class="ticker-dot"></div>
+  <span style="font-family:var(--mono);font-size:9px;color:rgba(255,45,85,.6);letter-spacing:1px;flex-shrink:0;margin-right:12px">NCSC</span>
+  <div style="overflow:hidden;flex:1;position:relative">
+    <div class="ticker-scroll" id="tickerText">Nieuws laden…</div>
+  </div>
+</div>
+
+<div class="main">
+
+  <!-- ── ROW 1: TILES ── -->
+  <div class="tiles-row">
+    <div class="tile t-cyan">
+      <div class="tile-lbl">Total Incidents (24h)</div>
+      <div class="tile-val" id="ti-total"><span class="spin"></span></div>
+      <div class="tile-sub" id="ti-total-s">—</div>
+    </div>
+    <div class="tile t-red">
+      <div class="tile-lbl">New</div>
+      <div class="tile-val" id="ti-new">—</div>
+      <div class="tile-sub" id="ti-new-s">—</div>
+    </div>
+    <div class="tile t-orange">
+      <div class="tile-lbl">Active</div>
+      <div class="tile-val" id="ti-active">—</div>
+      <div class="tile-sub">being investigated</div>
+    </div>
+    <div class="tile t-green">
+      <div class="tile-lbl">Closed (24h)</div>
+      <div class="tile-val" id="ti-closed">—</div>
+      <div class="tile-sub" id="ti-clo-s">—</div>
+    </div>
+    <div class="tile t-yellow">
+      <div class="tile-lbl">MTTR avg</div>
+      <div class="tile-val" id="ti-mttr">—</div>
+      <div class="tile-sub" id="ti-mttr-s">med / p90</div>
+    </div>
+    <div class="tile t-purple">
+      <div class="tile-lbl">SLA Breached</div>
+      <div class="tile-val" id="ti-sla">—</div>
+      <div class="tile-sub">open incidents</div>
+    </div>
+  </div>
+
+  <!-- ── ROW 2+3 LEFT: HIGH/CRITICAL FEED ── -->
+  <div class="card" style="grid-row:2/4">
+    <div class="card-hd">
+      ⚠ High &amp; Critical — Last 24h
+      <span class="card-hd-count" id="highCount"></span>
+    </div>
+    <div class="tbl-wrap card-body">
+      <table>
+        <thead><tr><th>#</th><th>Title</th><th>Sev</th><th>Status</th><th>Owner</th><th>Age</th></tr></thead>
+        <tbody id="highBody"><tr><td colspan="6" class="empty"><span class="spin"></span></td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── ROW 2 MID: SEVERITY + INGESTION ── -->
+  <div class="card">
+    <div class="card-hd">Severity Distribution</div>
+    <div class="card-body bars" id="sevBars"><div class="empty"><span class="spin"></span></div></div>
+  </div>
+
+  <!-- ── ROW 2 RIGHT: INGESTION GB ── -->
+  <div class="card">
+    <div class="card-hd">
+      Data Ingestion — 24h
+      <span class="card-hd-count" id="ingTotal"></span>
+    </div>
+    <div class="card-body">
+      <div id="ingSpark" style="margin-bottom:8px"></div>
+      <div class="bars" id="ingBars"><div class="empty"><span class="spin"></span></div></div>
+    </div>
+  </div>
+
+  <!-- ── ROW 3 MID+RIGHT: ANALYST WORKLOAD ── -->
+  <div class="card" style="grid-column:2/3">
+    <div class="card-hd">
+      Analyst Workload
+      <span class="card-hd-count" id="analystTotal"></span>
+    </div>
+    <div class="card-body" id="analystGrid" style="display:flex;flex-direction:column;gap:5px;overflow:auto;"><div class="empty"><span class="spin"></span></div></div>
+  </div>
+
+  <!-- ── ROW 3 RIGHT: AGE DISTRIBUTION ── -->
+  <div class="card" style="grid-column:3/4">
+    <div class="card-hd">
+      Open Incidents — Age Distribution
+      <span class="card-hd-count" id="ageTotal"></span>
+    </div>
+    <div class="card-body" id="ageDist"><div class="empty"><span class="spin"></span></div></div>
+  </div>
+
+
+  <!-- ── ROW 4: INCIDENT FEED ── -->
+  <div class="card" style="grid-column:1/-1;grid-row:4">
+    <div class="card-hd">
+      Incident Feed — Last 24h
+      <div style="display:flex;gap:4px;align-items:center" id="incFilterBtns">
+        <button class="nav-pill filter-btn active" data-filter="all">All</button>
+        <button class="nav-pill filter-btn" data-filter="High">High</button>
+        <button class="nav-pill filter-btn" data-filter="Medium">Medium</button>
+        <button class="nav-pill filter-btn" data-filter="Low">Low</button>
+        <button class="nav-pill filter-btn" data-filter="Informational">Info</button>
+        <button class="nav-pill filter-btn" data-filter="New">New</button>
+        <button class="nav-pill filter-btn" data-filter="sla">SLA ⚠</button>
+        <span id="filterCount" style="font-family:var(--mono);font-size:8px;color:var(--dim);margin-left:4px"></span>
+      </div>
+    </div>
+    <div class="tbl-wrap" style="flex:1;overflow:auto">
+      <table>
+        <thead><tr><th>#</th><th>Title</th><th>Sev</th><th>Status</th><th>Owner</th><th>Created</th><th>Age</th><th>Product</th><th>Tactics</th></tr></thead>
+        <tbody id="incBody"><tr><td colspan="9" class="empty"><span class="spin"></span></td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+</div><!-- /main -->
+</div><!-- /root -->
+
+<script>
+// ═══════════════════════════════════════════════════
+//  CONFIG — update these values before deploying
+// ═══════════════════════════════════════════════════
+const BLOB = 'https://YOUR_STORAGE_ACCOUNT.blob.core.windows.net/YOUR_CONTAINER_NAME';
+const REFRESH_MS = 5 * 60 * 1000;
+
+let allIncidents = [];
+let allOpenIncidents = [];
+let allAgeDist = [];
+let allMetrics = {};
+
+const $ = id => document.getElementById(id);
+
+function fmt(dt) {
+  if (!dt) return '—';
+  return new Date(dt).toLocaleString('nl-NL',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
+}
+function fmtH(h) {
+  const n = parseFloat(h);
+  if (isNaN(n)||n<0) return '—';
+  if (n<1)  return Math.round(n*60)+'m';
+  if (n<24) return n.toFixed(1)+'h';
+  return (n/24).toFixed(1)+'d';
+}
+function hoursOpen(inc) {
+  const s = new Date(inc.createdTimeUtc||inc.createdTime||inc.CreatedTime);
+  const closed = inc.closedTimeUtc||inc.closedTime||inc.ClosedTime;
+  const stat   = inc.status||inc.Status||'';
+  const e = (closed && stat==='Closed') ? new Date(closed) : new Date();
+  return (e-s)/3600000;
+}
+function sevColor(s) {
+  return {Critical:'#ff2d55',High:'#ff2d55',Medium:'#ffc800',Low:'#00e676',Informational:'#00d4ff'}[s]||'#2e4060';
+}
+function isSLABreached(inc) {
+  const stat = inc.status||inc.Status||'';
+  const sev  = inc.severity||inc.Severity||'';
+  if (stat==='Closed') return false;
+  const h = hoursOpen(inc);
+  return (sev==='High'&&h>2)||(sev==='Medium'&&h>8);
+}
+function laToObj(data) {
+  if (Array.isArray(data)) return data;
+  const tbl = data?.tables?.[0] || (data?.columns ? data : null);
+  if (!tbl) return [];
+  const cols = tbl.columns.map(c=>c.name);
+  return tbl.rows.map(row=>{
+    const o={};
+    cols.forEach((c,i)=>{o[c.charAt(0).toLowerCase()+c.slice(1)]=row[i];});
+    if(typeof o.tactics==='string'){try{o.tactics=JSON.parse(o.tactics)}catch(e){o.tactics=[]}}
+    return o;
+  });
+}
+function parseMF(field) {
+  if(!field) return [];
+  if(Array.isArray(field)&&field[0]?.columns) return laToObj(field[0]);
+  return Array.isArray(field)?field:[];
+}
+
+async function fetchAll() {
+  const ts = Date.now();
+  let errors = [];
+
+  async function safeFetch(url) {
+    try {
+      const r = await fetch(url + '?_=' + ts);
+      if (!r.ok) throw new Error(r.status + ' ' + url.split('/').pop());
+      return await r.json();
+    } catch(e) {
+      errors.push(e.message);
+      return null;
+    }
+  }
+
+  const [iData, mData, oData, aData] = await Promise.all([
+    safeFetch(`${BLOB}/incidents.json`),
+    safeFetch(`${BLOB}/metrics.json`),
+    safeFetch(`${BLOB}/open-incidents.json`),
+    safeFetch(`${BLOB}/age-distribution.json`)
+  ]);
+
+  if (iData !== null) allIncidents     = laToObj(iData);
+  if (mData !== null) allMetrics       = mData;
+  if (oData !== null) allOpenIncidents = laToObj(oData);
+  if (aData !== null) allAgeDist       = laToObj(aData);
+
+  // Only show error banner if ALL core fetches failed
+  if (iData === null && oData === null) {
+    $('errBanner').textContent = '⚠ Cannot reach Blob Storage — Check CORS settings. ' + errors[0];
+    $('errBanner').style.display = 'block';
+  } else {
+    $('errBanner').style.display = 'none';
+  }
+
+  render();
+  $('updTime').textContent = new Date().toLocaleTimeString('nl-NL');
+}
+
+function render() {
+  renderTiles();
+  renderHighFeed();
+  renderSeverity();
+  renderIngestion();
+  renderAnalysts();
+  renderAgeDist();
+  renderIncFeed();
+}
+
+function renderTiles() {
+  const inc = allIncidents;
+  if (!inc.length) return;
+  const total  = inc.length;
+  const newI   = inc.filter(i=>(i.status||i.Status)==='New').length;
+  const active = inc.filter(i=>(i.status||i.Status)==='Active').length;
+  const closed = inc.filter(i=>(i.status||i.Status)==='Closed');
+  const slaB   = inc.filter(isSLABreached).length;
+  const cwt    = closed.filter(i=>i.closedTimeUtc||i.closedTime||i.ClosedTime);
+  const hrs    = cwt.map(i=>hoursOpen(i)).sort((a,b)=>a-b);
+  const avg    = hrs.length ? hrs.reduce((a,b)=>a+b,0)/hrs.length : 0;
+  const med    = hrs.length ? hrs[Math.floor(hrs.length/2)] : 0;
+  const p90    = hrs.length ? hrs[Math.floor(hrs.length*.9)] : 0;
+
+  $('ti-total').textContent  = total;
+  $('ti-total-s').textContent= closed.length+' closed';
+  $('ti-new').textContent    = newI;
+  $('ti-new-s').textContent  = ((newI/total)*100).toFixed(0)+'% of total';
+  $('ti-active').textContent = active;
+  $('ti-closed').textContent = closed.length;
+  $('ti-clo-s').textContent  = ((closed.length/total)*100).toFixed(0)+'% rate';
+  $('ti-mttr').textContent   = fmtH(avg);
+  $('ti-mttr-s').textContent = `med ${fmtH(med)} / p90 ${fmtH(p90)}`;
+  $('ti-sla').textContent    = slaB;
+  $('ti-sla').style.color    = slaB>0?'var(--red)':'var(--green)';
+}
+
+function renderHighFeed() {
+  const rows = allIncidents
+    .filter(i=>['Critical','High'].includes(i.severity||i.Severity||''))
+    .slice(0,40);
+  $('highCount').textContent = rows.length+' incidents';
+  if(!rows.length){$('highBody').innerHTML='<tr><td colspan="6" class="empty">No High/Critical in 24h</td></tr>';return;}
+  $('highBody').innerHTML = rows.map(i=>{
+    const h    = hoursOpen(i);
+    const warn = isSLABreached(i);
+    const sev  = i.severity||i.Severity||'';
+    const stat = i.status||i.Status||'';
+    return `<tr>
+      <td style="color:var(--cyan);font-family:var(--mono)">#${i.incidentNumber||i.IncidentNumber||'?'}</td>
+      <td style="color:var(--bright);max-width:220px;white-space:normal;line-height:1.3">${i.title||i.Title||'—'}</td>
+      <td><span class="sev sev-${sev}">${sev}</span></td>
+      <td><span class="stat-badge stat-${stat}">${stat}</span></td>
+      <td style="font-family:var(--mono);font-size:10px">${i.owner||i.Owner||'<span style="color:var(--red)">—</span>'}</td>
+      <td style="font-family:var(--mono);font-size:10px;color:${warn?'var(--red)':stat==='Closed'?'var(--green)':'var(--text)'};font-weight:${warn?700:400}">${fmtH(h)}${warn?' ⚠':''}</td>
+    </tr>`;
+  }).join('');
+}
+
+function renderSeverity() {
+  const inc = allIncidents;
+  if(!inc.length) return;
+  const sc={};
+  inc.forEach(i=>{const s=i.severity||i.Severity||'?'; sc[s]=(sc[s]||0)+1;});
+  renderBars('sevBars',['Critical','High','Medium','Low','Informational']
+    .filter(s=>sc[s]).map(s=>{return{label:s,val:sc[s],color:sevColor(s)};}));
+}
+
+function renderIngestion() {
+  const tables = parseMF(allMetrics.ingestionByTable);
+  const trend  = parseMF(allMetrics.ingestionTrend);
+  if(!tables.length) return;
+  const total = tables.reduce((a,r)=>a+(parseFloat(r.totalGB||r.TotalGB)||0),0);
+
+  // Threshold colors
+  function gbColor(gb) {
+    if (gb >= 350) return "#ff2d55";
+    if (gb >= 300) return "#ff8c00";
+    if (gb >= 250) return "#ffc800";
+    return "#00e676";
+  }
+
+  const todayColor = gbColor(total);
+  $('ingTotal').textContent = total.toFixed(1)+' GB';
+  $('ingTotal').style.color = todayColor;
+
+  const max = Math.max(...tables.map(r=>parseFloat(r.totalGB||r.TotalGB)||0),1);
+  renderBars('ingBars', tables.slice(0,7).map(r=>{
+    const gb = parseFloat(r.totalGB||r.TotalGB)||0;
+    return {label:(r.dataType||r.DataType||'?').replace('Microsoft.',''), val:gb, color:'var(--cyan)'};
+  }), max);
+
+  if(trend.length) {
+    const maxGB = Math.max(...trend.map(r=>parseFloat(r.dailyGB||r.DailyGB)||0),1);
+    $('ingSpark').innerHTML = `
+      <div style="display:flex;align-items:flex-end;gap:3px;height:54px;padding-bottom:2px">
+        ${trend.map(r=>{
+          const gb  = parseFloat(r.dailyGB||r.DailyGB)||0;
+          const px  = Math.max(2,Math.round((gb/maxGB)*50));
+          const day = (r.day||r.Day||'').substring(5,10);
+          const col = gbColor(gb);
+          return `<div style="flex:1;height:${px}px;background:${col}22;border-top:2px solid ${col};cursor:default" title="${day}: ${gb}GB"></div>`;
+        }).join('')}
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-top:4px">
+        <span style="font-family:var(--mono);font-size:8px;color:var(--dim)">${(trend[0]?.day||trend[0]?.Day||'').substring(5,10)}</span>
+        <span style="font-family:var(--mono);font-size:8px;display:flex;gap:10px;align-items:center">
+          <span style="color:#00e676">■ &lt;250</span>
+          <span style="color:#ffc800">■ 250+</span>
+          <span style="color:#ff8c00">■ 300+</span>
+          <span style="color:#ff2d55">■ 350+</span>
+        </span>
+        <span style="font-family:var(--mono);font-size:8px;color:var(--dim)">${(trend[trend.length-1]?.day||trend[trend.length-1]?.Day||'').substring(5,10)}</span>
+      </div>
+      <div style="margin-top:6px;font-family:var(--mono);font-size:11px;font-weight:700;color:${todayColor};text-align:center">
+        ${total.toFixed(1)} GB today
+      </div>
+    `;
+  }
+}
+
+function renderAnalysts() {
+  const allOpen    = allOpenIncidents;  // 90d assigned open
+  const open24     = allIncidents.filter(i=>(i.status||i.Status)!=='Closed');
+  const unassigned = allOpen.filter(i=>!(i.owner||i.Owner));
+  const assigned   = allOpen.filter(i=>i.owner||i.Owner);
+  $('analystTotal').textContent = `${allOpen.length} open (90d) · ${assigned.length} assigned`;
+
+  const amap={};
+  open24.filter(i=>i.owner||i.Owner).forEach(i=>{
+    const o=i.owner||i.Owner;
+    if(!amap[o])amap[o]={open24:0,crit:0,oldest:null};
+    amap[o].open24++;
+    if(['Critical','High'].includes(i.severity||i.Severity))amap[o].crit++;
+    const d=new Date(i.createdTimeUtc||i.createdTime||i.CreatedTime);
+    if(!amap[o].oldest||d<amap[o].oldest)amap[o].oldest=d;
+  });
+  const amap90={};
+  allOpenIncidents.forEach(i=>{
+    const o=(i.owner||i.Owner||'').trim();
+    if(!o) return;
+    const key=o.toLowerCase();
+    amap90[key]=(amap90[key]||0)+1;
+  });
+
+  const ANALYST_COLORS = ["#00d4ff","#00e676","#b388ff","#ffc800","#ff8c00","#ff2d55"];
+
+  const unaTile = '';
+
+  // Merge 24h and 90d analyst keys so everyone appears
+  const allAnalystKeys = new Set([
+    ...Object.keys(amap).map(k=>k.toLowerCase().trim()),
+    ...Object.keys(amap90)
+  ]);
+  const displayName = {};
+  Object.keys(amap).forEach(k=>{ displayName[k.toLowerCase().trim()] = k; });
+  Object.keys(amap90).forEach(k=>{ if(!displayName[k]) displayName[k] = k; });
+  const analystTiles = [...allAnalystKeys]
+    .sort((a,b) => (amap90[b]||0) - (amap90[a]||0))
+    .map((key, idx) => {
+      const s24   = amap[displayName[key]] || {open24:0, crit:0, oldest:null};
+      const s90   = amap90[key] || 0;
+      const name  = displayName[key] || key;
+      const color = ANALYST_COLORS[idx % ANALYST_COLORS.length];
+      const shortName = name.replace(/@.*$/,'').replace(/^Beh/i,'').replace(/^beh/i,'');
+      // oldest from 90d data
+      const oldest90 = allOpenIncidents
+        .filter(i => (i.owner||i.Owner||'').toLowerCase().trim() === key)
+        .map(i => new Date(i.createdTime||i.CreatedTime))
+        .sort((a,b)=>a-b)[0];
+      const oldestH = oldest90 ? (Date.now()-oldest90)/3600000 : null;
+      return `<div class="analyst-tile" style="border-left-color:${color}">
+        <div class="analyst-name" style="color:${color}">${shortName}</div>
+        <div style="flex:1;display:grid;grid-template-columns:repeat(4,1fr);gap:4px;align-items:center">
+          <div style="text-align:center">
+            <div class="a-lbl">Open 24h</div>
+            <div style="font-family:var(--mono);font-size:18px;font-weight:700;color:${s24.open24>0?color:'var(--dim)'}">${s24.open24}</div>
+          </div>
+          <div style="text-align:center">
+            <div class="a-lbl">Open 90d</div>
+            <div style="font-family:var(--mono);font-size:18px;font-weight:700;color:${color}">${s90}</div>
+          </div>
+          <div style="text-align:center">
+            <div class="a-lbl">Crit/High</div>
+            <div style="font-family:var(--mono);font-size:18px;font-weight:700;color:${s24.crit>0?'var(--red)':'var(--dim)'}">${s24.crit}</div>
+          </div>
+          <div style="text-align:center">
+            <div class="a-lbl">Oldest open</div>
+            <div style="font-family:var(--mono);font-size:14px;font-weight:700;color:${oldestH&&oldestH>72?'var(--red)':oldestH&&oldestH>24?'var(--orange)':color}">${oldestH?fmtH(oldestH):'—'}</div>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+  $('analystGrid').innerHTML = unaTile + analystTiles;
+}
+
+function renderBars(id, rows, maxOverride) {
+  if(!rows.length){$(id).innerHTML='<div class="empty">No data</div>';return;}
+  const max=maxOverride||Math.max(...rows.map(r=>r.val),1);
+  $(id).innerHTML=rows.map(r=>`
+    <div class="bar-row">
+      <div class="bar-lbl" title="${r.label}">${r.label}</div>
+      <div class="bar-track">
+        <div class="bar-fill" style="width:${Math.max(2,(r.val/max)*100).toFixed(1)}%;background:${r.color||'var(--cyan)'}">
+          <span class="bar-num">${r.display!==undefined?r.display:r.val}</span>
+        </div>
+      </div>
+    </div>`).join('');
+}
+
+function renderAgeDist() {
+  const inc = allAgeDist.length ? allAgeDist : allOpenIncidents;
+  if (!inc.length) { $('ageDist').innerHTML='<div class="empty">No open incidents</div>'; return; }
+
+  $('ageTotal').textContent = inc.length + ' open';
+
+  const buckets = [
+    { label: '< 1 day',   min:0,   max:24,   color:'#00e676', count:0 },
+    { label: '1 – 3d',    min:24,  max:72,   color:'#66ffaa', count:0 },
+    { label: '3 – 7d',    min:72,  max:168,  color:'#ffc800', count:0 },
+    { label: '1 – 2w',    min:168, max:336,  color:'#ff8c00', count:0 },
+    { label: '2w – 1m',   min:336, max:720,  color:'#ff5533', count:0 },
+    { label: '> 1 month', min:720, max:99999,color:'#ff2d55', count:0 },
+  ];
+
+  inc.forEach(i => {
+    const created = i.createdTime||i.CreatedTime||i.createdTimeUtc||''; if(!created) return; const h = (new Date() - new Date(created)) / 3600000;
+    const b = buckets.find(b => h >= b.min && h < b.max);
+    if (b) b.count++;
+  });
+
+  const maxCount = Math.max(...buckets.map(b=>b.count), 1);
+
+  $('ageDist').innerHTML = buckets.map(b => `
+    <div class="age-bar-row">
+      <div class="age-bar-lbl">${b.label}</div>
+      <div class="age-bar-track">
+        <div class="age-bar-fill" style="width:${b.count===0?0:Math.max(4,(b.count/maxCount)*100).toFixed(1)}%;background:${b.color}">
+          <span class="age-bar-num">${b.count}</span>
+        </div>
+      </div>
+    </div>`).join('') +
+    `<div style="margin-top:8px;font-family:var(--mono);font-size:9px;color:var(--dim);border-top:1px solid var(--border);padding-top:6px;display:flex;justify-content:space-between">
+      <span>Oldest: <span style="color:var(--red);font-weight:700">${fmtH(Math.max(...inc.map(i=>(new Date()-new Date(i.createdTime||i.CreatedTime))/3600000).filter(h=>h>0)))}</span></span>
+      <span>Avg: <span style="color:var(--yellow);font-weight:700">${fmtH(inc.map(i=>(new Date()-new Date(i.createdTime||i.CreatedTime))/3600000).filter(h=>h>0).reduce((a,b,_,arr)=>a+b/arr.length,0))}</span></span>
+    </div>`;
+}
+
+// Multi-select filter
+let activeFilters = new Set(['all']);
+
+function toggleFilter(f) {
+  if (f === 'all') {
+    activeFilters = new Set(['all']);
+  } else {
+    activeFilters.delete('all');
+    if (activeFilters.has(f)) {
+      activeFilters.delete(f);
+      if (activeFilters.size === 0) activeFilters.add('all');
+    } else {
+      activeFilters.add(f);
+    }
+  }
+  document.querySelectorAll('.filter-btn').forEach(b => {
+    b.classList.toggle('active', activeFilters.has(b.dataset.filter));
+  });
+  const c = document.getElementById('filterCount');
+  if (c) c.textContent = activeFilters.has('all') ? '' : activeFilters.size + ' active';
+  renderIncFeed();
+}
+function initFilters() {
+  document.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => toggleFilter(btn.dataset.filter));
+  });
+}
+function setIncFilter(f, btn) {}
+
+function renderIncFeed() {
+  let rows = allIncidents;
+  if (!activeFilters.has('all')) {
+    rows = rows.filter(i => {
+      const sev  = i.severity||i.Severity||'';
+      const stat = i.status||i.Status||'';
+      return (
+        (activeFilters.has('High')          && sev==='High') ||
+        (activeFilters.has('Medium')        && sev==='Medium') ||
+        (activeFilters.has('Low')           && sev==='Low') ||
+        (activeFilters.has('Informational') && sev==='Informational') ||
+        (activeFilters.has('New')           && stat==='New') ||
+        (activeFilters.has('sla')           && isSLABreached(i))
+      );
+    });
+  }
+  rows = rows.slice(0, 50);
+  if (!rows.length) { $('incBody').innerHTML = '<tr><td colspan="9" class="empty">No incidents match this filter</td></tr>'; return; }
+  $('incBody').innerHTML = rows.map(i => {
+    const h    = hoursOpen(i);
+    const warn = isSLABreached(i);
+    const sev  = i.severity||i.Severity||"";
+    const stat = i.status||i.Status||"";
+    let _tac = i.tactics||i.Tactics||[];
+    if(typeof _tac==="string"){try{_tac=JSON.parse(_tac)}catch(e){_tac=[];}}
+    const tactics = _tac.slice(0,2).join(", ")||"—";
+    let _prod = i.alertProductNames||[];
+    if(typeof _prod==="string"){try{_prod=JSON.parse(_prod)}catch(e){_prod=[];}}
+    const prod = (_prod[0]||"—").replace("Azure Sentinel","Sentinel").replace("Microsoft Defender Advanced Threat Protection","MDE").replace("Office 365 Advanced Threat Protection","MDO").replace("Azure Active Directory Identity Protection","AADIP").replace("Microsoft Cloud App Security","MCAS");
+    return `<tr>
+      <td style="color:var(--cyan);font-family:var(--mono)">#${i.incidentNumber||i.IncidentNumber||"?"}</td>
+      <td style="color:var(--bright);max-width:260px;white-space:normal;line-height:1.3">${i.title||i.Title||"—"}</td>
+      <td><span class="sev sev-${sev}">${sev}</span></td>
+      <td><span class="stat-badge stat-${stat}">${stat}</span></td>
+      <td style="font-family:var(--mono);font-size:10px">${i.owner||i.Owner||"<span style='color:var(--dim)'>—</span>"}</td>
+      <td style="font-family:var(--mono)">${fmt(i.createdTime||i.CreatedTime||i.createdTimeUtc)}</td>
+      <td style="font-family:var(--mono);color:${warn?"var(--red)":stat==="Closed"?"var(--green)":"var(--text)"};font-weight:${warn?700:400}">${fmtH(h)}${warn?" ⚠":""}</td>
+      <td style="font-family:var(--mono);font-size:9px;color:var(--dim)">${prod}</td>
+      <td style="font-family:var(--mono);font-size:9px;color:var(--dim)">${tactics}</td>
+    </tr>`;
+  }).join("");
+}
+
+$('btnRefresh').addEventListener('click', fetchAll);
+async function fetchNCSCFeed() {
+  try {
+    // Use rss2json proxy to avoid CORS
+    const url = 'https://api.rss2json.com/v1/api.json?rss_url=' + encodeURIComponent('https://feeds.ncsc.nl/nieuws.rss');
+    const r = await fetch(url);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json();
+    const items = data.items || [];
+    if (!items.length) throw new Error('No items');
+
+    // Build scrolling text: title · date · title · date ...
+    const text = items
+      .slice(0, 20)
+      .map(i => {
+        const date = new Date(i.pubDate).toLocaleDateString('nl-NL', {day:'2-digit',month:'short'});
+        return `${i.title} &nbsp;<span style="color:rgba(255,45,85,.5)">${date}</span>`;
+      })
+      .join(' &nbsp;&nbsp;·&nbsp;&nbsp; ');
+
+    // Duplicate for seamless loop
+    $('tickerText').innerHTML = text + ' &nbsp;&nbsp;·&nbsp;&nbsp; ' + text;
+  } catch(e) {
+    $('tickerText').textContent = 'NCSC feed tijdelijk niet beschikbaar · ' + e.message;
+  }
+}
+
+fetchAll();
+fetchNCSCFeed();
+initFilters();
+setInterval(fetchAll, REFRESH_MS);
+setInterval(fetchNCSCFeed, 30 * 60 * 1000); // refresh feed every 30 min
+</script>
+</body>
+</html>

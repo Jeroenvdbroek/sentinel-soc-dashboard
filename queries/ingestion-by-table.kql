@@ -1,0 +1,8 @@
+// ── Data ingestion by table (last 24h) ────────────────────────────────────
+// Used by: logicapp-metrics.json → metrics.json blob
+Usage
+| where TimeGenerated > ago(24h)
+| summarize TotalGB = round(sum(Quantity)/1024, 3) by DataType
+| where TotalGB > 0
+| sort by TotalGB desc
+| take 15
